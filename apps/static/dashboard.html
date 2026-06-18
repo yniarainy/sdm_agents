@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SDM 生产控制台</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap');
+    :root {
+      --bg-0: #07111f;
+      --bg-1: #0b1f33;
+      --bg-2: #11304d;
+      --surface: rgba(10, 20, 33, 0.68);
+      --surface-2: rgba(255, 255, 255, 0.06);
+      --border: rgba(255, 255, 255, 0.10);
+      --text: #eff6ff;
+      --muted: #a8bdd7;
+      --accent: #59c3ff;
+      --accent-2: #7cf0c6;
+      --accent-3: #b28dff;
+      --danger: #ff7f7f;
+      --warning: #ffd479;
+      --shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
+      --radius-xl: 24px;
+      --radius-lg: 18px;
+      --radius-md: 14px;
+    }
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: 'Noto Sans SC', sans-serif;
+      background:
+        radial-gradient(900px 540px at 18% 12%, rgba(89,195,255,0.20), transparent 60%),
+        radial-gradient(760px 500px at 90% 0%, rgba(178,141,255,0.18), transparent 52%),
+        radial-gradient(1000px 500px at 50% 120%, rgba(124,240,198,0.16), transparent 48%),
+        linear-gradient(160deg, var(--bg-0) 0%, var(--bg-1) 42%, var(--bg-2) 100%);
+      overflow-x: hidden;
+    }
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 72px 72px;
+      pointer-events: none;
+      mask-image: radial-gradient(circle at center, black 58%, transparent 100%);
+      opacity: 0.38;
+    }
+    .shell {
+      max-width: 1520px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      gap: 18px;
+    }
+    .hero {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      background: linear-gradient(135deg, rgba(10,18,31,0.92), rgba(12,34,54,0.84));
+      box-shadow: var(--shadow);
+      padding: 22px 24px;
+    }
+    .hero::after {
+      content: '';
+      position: absolute;
+      inset: auto -80px -120px auto;
+      width: 280px;
+      height: 280px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(89,195,255,0.24), transparent 70%);
+      filter: blur(6px);
+      pointer-events: none;
+    }
+    .hero-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: flex-start;
+    }
+    .brand {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+    .badge {
+      width: 54px;
+      height: 54px;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(145deg, rgba(89,195,255,0.24), rgba(124,240,198,0.20));
+      border: 1px solid rgba(255,255,255,0.16);
+      color: #fff;
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.18);
+    }
+    .hero h1 {
+      margin: 0;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 28px;
+      letter-spacing: 0.2px;
+    }
+    .hero p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      max-width: 860px;
+      line-height: 1.6;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 440px minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .stack {
+      display: grid;
+      gap: 18px;
+    }
+    .panel {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      background: var(--surface);
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+    }
+    .panel-head h2 {
+      margin: 0;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 18px;
+      letter-spacing: 0.2px;
+    }
+    .panel-head p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .panel-body { padding: 18px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .row { margin-bottom: 12px; }
+    label {
+      display: block;
+      font-size: 12px;
+      letter-spacing: 0.2px;
+      color: #d5e4f7;
+      margin-bottom: 6px;
+    }
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      padding: 12px 12px;
+      font-size: 13px;
+      color: var(--text);
+      background: rgba(255,255,255,0.06);
+      outline: none;
+      transition: border-color .15s ease, transform .15s ease, background .15s ease;
+    }
+    input::placeholder, textarea::placeholder { color: rgba(232,241,252,0.42); }
+    input:focus, textarea:focus, select:focus {
+      border-color: rgba(89,195,255,0.66);
+      background: rgba(255,255,255,0.09);
+      transform: translateY(-1px);
+    }
+    textarea { min-height: 80px; resize: vertical; }
+    .hint {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .chip {
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      color: #d6e9fb;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.10);
+    }
+    .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+    button {
+      border: 0;
+      border-radius: 14px;
+      padding: 11px 15px;
+      color: white;
+      cursor: pointer;
+      font-weight: 700;
+      font-family: 'Space Grotesk', sans-serif;
+      letter-spacing: 0.2px;
+      transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+      box-shadow: 0 14px 28px rgba(0,0,0,0.18);
+    }
+    button:hover { transform: translateY(-1px); filter: brightness(1.05); }
+    button:active { transform: translateY(0); }
+    .btn-primary { background: linear-gradient(135deg, #4d8dff, #66d5ff); }
+    .btn-upload { background: linear-gradient(135deg, #8b5cf6, #4f8dfc); }
+    .btn-outline { background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06)); }
+    .btn-chat { background: linear-gradient(135deg, #25364f, #0f172a); }
+    .btn-success { background: linear-gradient(135deg, #10b981, #22c55e); }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.18);
+      box-shadow: none;
+    }
+    .presence-grid { display: grid; gap: 14px; }
+    .upload-card {
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 18px;
+      padding: 14px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
+    }
+    .upload-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .preview {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+      max-height: 220px;
+      overflow: auto;
+    }
+    .preview-item {
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      font-size: 12px;
+      color: #d8e8fb;
+      line-height: 1.45;
+    }
+    .chat-box {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 560px;
+    }
+    .chat-log {
+      padding: 16px;
+      overflow: auto;
+      display: grid;
+      gap: 10px;
+      background:
+        linear-gradient(180deg, rgba(8,18,31,0.40), rgba(10,24,44,0.56)),
+        radial-gradient(1000px 420px at 80% 0%, rgba(89,195,255,0.14), transparent 60%);
+    }
+    .msg {
+      max-width: min(92%, 760px);
+      padding: 12px 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.10);
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 13px;
+      line-height: 1.55;
+      box-shadow: 0 12px 24px rgba(0,0,0,0.16);
+    }
+    .msg.user {
+      margin-left: auto;
+      background: linear-gradient(135deg, rgba(89,195,255,0.32), rgba(89,195,255,0.16));
+    }
+    .msg.bot {
+      margin-right: auto;
+      background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
+    }
+    .chat-input {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      padding: 14px 16px 16px;
+      border-top: 1px solid rgba(255,255,255,0.10);
+      background: rgba(7,17,31,0.72);
+    }
+    .telemetry {
+      display: grid;
+      gap: 12px;
+    }
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .metric {
+      padding: 14px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.04));
+      border: 1px solid rgba(255,255,255,0.10);
+    }
+    .metric .label { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+    .metric .value { font-size: 15px; font-weight: 700; }
+    .stream {
+      min-height: 260px;
+      max-height: 380px;
+      overflow: auto;
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: linear-gradient(180deg, rgba(2,10,18,0.95), rgba(4,16,28,0.92));
+      color: #d7ebff;
+      font-family: Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+    .links {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .links a {
+      display: block;
+      text-decoration: none;
+      color: #d6e8ff;
+      font-size: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.05);
+    }
+    .links a:hover { background: rgba(255,255,255,0.08); }
+    .section-note { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    @media (max-width: 1280px) {
+      .layout { grid-template-columns: 1fr; }
+      .telemetry-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 780px) {
+      .shell { padding: 14px; }
+      .hero-top { flex-direction: column; }
+      .grid2, .grid3 { grid-template-columns: 1fr; }
+      .chat-input { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="hero-top">
+        <div class="brand">
+          <div class="badge">SDM</div>
+          <div>
+            <h1>物种分布模型生产控制台</h1>
+            <p>统一管理存在点上传、建模参数、交叉验证、对话启动和实时日志。你可以先上传数据，再用自然语言让系统自动决定是否开始训练、评估与出图。</p>
+          </div>
+        </div>
+        <div class="hero-actions">
+          <button class="btn-ghost" id="btnTemplate">下载存在点模板</button>
+          <button class="btn-outline" id="btnLatestUpload">查看最近上传</button>
+          <button class="btn-success" id="btnLatest">查看最近任务</button>
+        </div>
+      </div>
+      <div class="chips">
+        <span class="chip">CSV / TSV / TXT / GeoJSON</span>
+        <span class="chip">必须包含 lon, lat</span>
+        <span class="chip">自动保存为 UTF-8 CSV</span>
+        <span class="chip">支持 fallback 与 GEE</span>
+      </div>
+    </section>
+
+    <section class="layout">
+      <div class="stack">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>数据准备</h2>
+              <p>先上传存在点，再补充变量与交叉验证策略。</p>
+            </div>
+          </div>
+          <div class="panel-body presence-grid">
+            <div class="upload-card">
+              <div class="row">
+                <label>存在点文件</label>
+                <input id="presence_file" type="file" accept=".csv,.tsv,.txt,.geojson,.json" />
+              </div>
+              <div class="hint">推荐字段：species、lon、lat、year、month、date、source。后端至少要求 lon、lat、year；GeoJSON 需是点要素。</div>
+              <div class="grid2">
+                <div class="row">
+                  <label>存在点来源</label>
+                  <select id="presence_source_mode">
+                    <option value="gbif_obis">gbif_obis</option>
+                    <option value="upload">upload</option>
+                    <option value="gbif">gbif</option>
+                    <option value="obis">obis</option>
+                  </select>
+                </div>
+                <div class="row">
+                  <label>下载记录上限</label>
+                  <input id="occurrence_download_limit" value="1200" />
+                </div>
+              </div>
+              <div class="upload-meta" id="uploadMeta"></div>
+              <div class="btns" style="margin-top:12px;">
+                <button class="btn-upload" id="btnUpload">上传存在点</button>
+                <button class="btn-outline" id="btnTemplate2">下载模板</button>
+              </div>
+            </div>
+
+            <div class="row">
+              <label>已上传存在点路径</label>
+              <input id="presence_points_path" placeholder="上传后自动填充，也可手动输入" />
+              <div class="hint">系统会把上传文件标准化后保存到服务器端的 uploads 目录，并把这个路径传给训练流程。</div>
+            </div>
+
+            <div class="grid2">
+              <div class="row">
+                <label>物种名称</label>
+                <input id="species" value="demersal_fish" />
+              </div>
+              <div class="row">
+                <label>地图分辨率</label>
+                <input id="map_resolution" value="140" />
+              </div>
+            </div>
+
+            <div class="grid2">
+              <div class="row">
+                <label>开始日期</label>
+                <input id="start_date" value="2023-01-01" />
+              </div>
+              <div class="row">
+                <label>结束日期</label>
+                <input id="end_date" value="2023-12-31" />
+              </div>
+            </div>
+
+            <div class="row">
+              <label>环境变量</label>
+              <textarea id="factors">sst,chl_a,salinity,bathymetry</textarea>
+              <div class="hint">逗号分隔。系统会自动做变量推荐和缺失提示。</div>
+            </div>
+
+            <div class="grid3">
+              <div class="row">
+                <label>切分策略</label>
+                <select id="split_mode">
+                  <option value="random_holdout">random_holdout</option>
+                  <option value="random_kfold">random_kfold</option>
+                  <option value="spatial_kfold">spatial_kfold</option>
+                  <option value="spatial_block_kfold">spatial_block_kfold</option>
+                  <option value="env_spatial_block_kfold">env_spatial_block_kfold</option>
+                </select>
+              </div>
+              <div class="row">
+                <label>n_splits</label>
+                <input id="n_splits" value="5" />
+              </div>
+              <div class="row">
+                <label>最大重试</label>
+                <input id="max_retries" value="2" />
+              </div>
+            </div>
+
+            <div class="grid3">
+              <div class="row">
+                <label>spatial_clusters</label>
+                <input id="spatial_clusters" value="10" />
+              </div>
+              <div class="row">
+                <label>分块网格(Lon)</label>
+                <input id="spatial_block_bins_lon" value="4" />
+              </div>
+              <div class="row">
+                <label>分块网格(Lat)</label>
+                <input id="spatial_block_bins_lat" value="4" />
+              </div>
+            </div>
+
+            <div class="row">
+              <label>环境分层箱数 env_strata_bins</label>
+              <input id="env_strata_bins" value="4" />
+            </div>
+
+            <div class="grid2">
+              <div class="row">
+                <label>启用 GEE</label>
+                <select id="use_gee"><option value="true">true</option><option value="false">false</option></select>
+              </div>
+              <div class="row">
+                <label>严格 GEE</label>
+                <select id="strict_gee"><option value="false">false</option><option value="true">true</option></select>
+              </div>
+            </div>
+
+            <div class="btns">
+              <button class="btn-primary" id="btnRun">启动建模任务</button>
+              <button class="btn-success" id="btnLatest">查看最近任务</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>上传结果</h2>
+              <p>查看最近一次上传的标准化路径、列结构和前几行预览。</p>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="telemetry-grid" id="uploadMetrics"></div>
+            <div class="preview" id="uploadPreview"></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="stack">
+        <section class="panel chat-box">
+          <div class="panel-head">
+            <div>
+              <h2>智能对话助手</h2>
+              <p>自然语言下达任务，也可以直接询问当前计划、进度或日志。</p>
+            </div>
+          </div>
+          <div id="chatLog" class="chat-log"></div>
+          <div class="chat-input">
+            <input id="chatInput" placeholder="例如：请用2022年数据给金枪鱼做严格GEE建模并输出预测图" />
+            <button class="btn-chat" id="btnSend">发送</button>
+          </div>
+        </section>
+
+        <section class="panel telemetry">
+          <div class="panel-head">
+            <div>
+              <h2>实时执行日志</h2>
+              <p>SSE 流式反馈，保持滚动，不打断当前工作流。</p>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="telemetry-grid" id="kpis"></div>
+            <div id="streamLog" class="stream"></div>
+            <div class="links" id="links"></div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+<script>
+const chatLog = document.getElementById('chatLog');
+const streamLog = document.getElementById('streamLog');
+const kpis = document.getElementById('kpis');
+const links = document.getElementById('links');
+const uploadMetrics = document.getElementById('uploadMetrics');
+const uploadPreview = document.getElementById('uploadPreview');
+const uploadMeta = document.getElementById('uploadMeta');
+let evtSrc = null;
+let messages = [];
+
+function addMsg(role, content) {
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  div.textContent = content;
+  chatLog.appendChild(div);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function appendStream(line) {
+  streamLog.textContent += line + '\n';
+  streamLog.scrollTop = streamLog.scrollHeight;
+}
+
+function renderUploadState(upload) {
+  uploadMetrics.innerHTML = '';
+  uploadPreview.innerHTML = '';
+  uploadMeta.innerHTML = '';
+
+  if (!upload) {
+    uploadMeta.innerHTML = '<span class="chip">暂无上传</span>';
+    uploadPreview.innerHTML = '<div class="preview-item">还没有上传存在点文件。你可以先下载模板，整理好数据后再上传。</div>';
+    return;
+  }
+
+  const metrics = [
+    ['文件名', upload.file_name || '-'],
+    ['行数', String(upload.rows ?? '-')],
+    ['时间', upload.uploaded_at || '-']
+  ];
+  metrics.forEach(([label, value]) => {
+    const card = document.createElement('div');
+    card.className = 'metric';
+    card.innerHTML = `<div class="label">${label}</div><div class="value">${value}</div>`;
+    uploadMetrics.appendChild(card);
+  });
+  uploadMeta.innerHTML = `<span class="chip">${upload.kind || 'presence_points'}</span><span class="chip">${upload.path || ''}</span>`;
+}
+
+function renderUploadPreview(data) {
+  if (!data) {
+    renderUploadState(null);
+    return;
+  }
+  renderUploadState({
+    kind: 'presence_points',
+    file_name: data.file_name || data.presence_points_path?.split(/[\\/]/).pop() || '-',
+    rows: data.rows,
+    uploaded_at: new Date().toLocaleString('zh-CN')
+  });
+  uploadMeta.innerHTML = '';
+  const chips = [data.presence_points_path, `columns: ${(data.columns || []).join(', ')}`];
+  chips.filter(Boolean).forEach((text) => {
+    const span = document.createElement('span');
+    span.className = 'chip';
+    span.textContent = text;
+    uploadMeta.appendChild(span);
+  });
+  if (data.preview && data.preview.length) {
+    data.preview.forEach((row, index) => {
+      const item = document.createElement('div');
+      item.className = 'preview-item';
+      item.textContent = `样例 ${index + 1}: ${JSON.stringify(row, null, 2)}`;
+      uploadPreview.appendChild(item);
+    });
+  } else {
+    uploadPreview.innerHTML = '<div class="preview-item">没有可预览的数据。</div>';
+  }
+}
+
+function startStream(jobId) {
+  if (evtSrc) evtSrc.close();
+  appendStream(`\n--- 开始监听任务 ${jobId} ---`);
+  evtSrc = new EventSource(`/jobs/${jobId}/stream`);
+  evtSrc.addEventListener('log', (e) => {
+    try {
+      const obj = JSON.parse(e.data);
+      appendStream(obj.log || e.data);
+    } catch {
+      appendStream(e.data);
+    }
+  });
+  evtSrc.addEventListener('done', async () => {
+    appendStream('[系统] 任务流结束');
+    evtSrc.close();
+    await refreshJob(jobId);
+  });
+  evtSrc.onerror = () => appendStream('[系统] 日志流暂不可用');
+}
+
+async function refreshJob(jobId) {
+  const res = await fetch(`/jobs/${jobId}`);
+  if (!res.ok) return;
+  const job = await res.json();
+  kpis.innerHTML = '';
+  [
+    ['状态', job.status || '-'],
+    ['创建时间', job.created_at || '-'],
+    ['结束时间', job.finished_at || '-']
+  ].forEach(([label, value]) => {
+    const card = document.createElement('div');
+    card.className = 'metric';
+    card.innerHTML = `<div class="label">${label}</div><div class="value">${value}</div>`;
+    kpis.appendChild(card);
+  });
+  links.innerHTML = '';
+  const a = job.artifacts || {};
+  Object.keys(a).forEach((k) => {
+    const item = document.createElement('a');
+    item.href = '#';
+    item.textContent = `${k}: ${a[k]}`;
+    links.appendChild(item);
+  });
+}
+
+function collectOverrides() {
+  return {
+    species_name: document.getElementById('species').value.trim(),
+    presence_points_path: document.getElementById('presence_points_path').value.trim(),
+    presence_source_mode: document.getElementById('presence_source_mode').value,
+    occurrence_download_limit: parseInt(document.getElementById('occurrence_download_limit').value || '1200', 10),
+    start_date: document.getElementById('start_date').value.trim(),
+    end_date: document.getElementById('end_date').value.trim(),
+    factors: document.getElementById('factors').value.split(',').map(s => s.trim()).filter(Boolean),
+    split_mode: document.getElementById('split_mode').value,
+    n_splits: parseInt(document.getElementById('n_splits').value || '5', 10),
+    spatial_clusters: parseInt(document.getElementById('spatial_clusters').value || '10', 10),
+    spatial_block_bins_lon: parseInt(document.getElementById('spatial_block_bins_lon').value || '4', 10),
+    spatial_block_bins_lat: parseInt(document.getElementById('spatial_block_bins_lat').value || '4', 10),
+    env_strata_bins: parseInt(document.getElementById('env_strata_bins').value || '4', 10),
+    map_resolution: parseInt(document.getElementById('map_resolution').value || '140', 10),
+    max_retries: parseInt(document.getElementById('max_retries').value || '2', 10),
+    use_gee: document.getElementById('use_gee').value === 'true',
+    strict_gee: document.getElementById('strict_gee').value === 'true'
+  };
+}
+
+async function uploadPresencePoints() {
+  const input = document.getElementById('presence_file');
+  const file = input.files && input.files[0];
+  if (!file) {
+    addMsg('bot', '请先选择一个存在点文件。');
+    return;
+  }
+  const formData = new FormData();
+  formData.append('file', file);
+  addMsg('bot', `正在上传: ${file.name}`);
+  const res = await fetch('/uploads/presence-points', {
+    method: 'POST',
+    body: formData
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    addMsg('bot', `上传失败: ${data.detail || JSON.stringify(data)}`);
+    return;
+  }
+  document.getElementById('presence_points_path').value = data.presence_points_path || '';
+  renderUploadPreview({
+    presence_points_path: data.presence_points_path,
+    rows: data.rows,
+    columns: data.columns,
+    preview: data.preview,
+    file_name: file.name
+  });
+  addMsg('bot', `上传成功: ${data.presence_points_path}，共 ${data.rows} 行。`);
+}
+
+async function refreshLatestUpload() {
+  const res = await fetch('/uploads/latest');
+  const data = await res.json();
+  if (data.status !== 'ok') {
+    renderUploadState(null);
+    addMsg('bot', '当前没有最近上传。');
+    return;
+  }
+  renderUploadState(data.upload);
+  addMsg('bot', `最近上传: ${data.upload.file_name}, ${data.upload.rows} 行`);
+}
+
+async function startJob() {
+  const overrides = collectOverrides();
+  const res = await fetch('/jobs/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(overrides)
+  });
+  const data = await res.json();
+  if (data.job_id) {
+    addMsg('bot', `任务已启动: ${data.job_id}`);
+    startStream(data.job_id);
+  } else {
+    addMsg('bot', `启动失败: ${JSON.stringify(data)}`);
+  }
+}
+
+async function openTemplate() {
+  window.open('/uploads/presence-template', '_blank');
+}
+
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  addMsg('user', text);
+  messages.push({ role: 'user', content: text });
+
+  const body = { input: { messages } };
+  const res = await fetch('/chat/invoke', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  const reply = data?.output?.content || '无响应';
+  addMsg('bot', reply);
+  messages.push({ role: 'assistant', content: reply });
+
+  const m = reply.match(/任务ID[:：]\s*([0-9a-fA-F-]{8,})/);
+  if (m && m[1]) startStream(m[1]);
+}
+
+document.getElementById('btnUpload').onclick = uploadPresencePoints;
+document.getElementById('btnRun').onclick = startJob;
+document.getElementById('btnLatest').onclick = async () => {
+  const res = await fetch('/jobs/latest');
+  const data = await res.json();
+  if (data.status !== 'ok' || !data.job) {
+    addMsg('bot', '当前无最近任务。');
+    return;
+  }
+  const job = data.job;
+  addMsg('bot', `最近任务: ${job.id}, 状态: ${job.status}`);
+  await refreshJob(job.id);
+  if (job.status === 'running' || job.status === 'queued') startStream(job.id);
+};
+document.getElementById('btnLatestUpload').onclick = refreshLatestUpload;
+document.getElementById('btnTemplate').onclick = openTemplate;
+document.getElementById('btnTemplate2').onclick = openTemplate;
+document.getElementById('btnSend').onclick = sendChat;
+document.getElementById('chatInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendChat();
+});
+
+async function init() {
+  addMsg('bot', '你好，我可以理解自然语言需求，并协助你上传存在点、启动建模、查看进度和产物。');
+  renderUploadState(null);
+  await refreshLatestUpload().catch(() => {});
+}
+
+init();
+</script>
+</body>
+</html>

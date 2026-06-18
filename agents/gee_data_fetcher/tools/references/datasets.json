@@ -1,0 +1,34 @@
+{
+  "sst": {
+    "description": "海表温度 (NOAA OISST V2.1) - 适合大尺度年代际分析",
+    "id": "NOAA/CDR/OISST/V2_1", "band": "sst", "scale_factor": 0.01, "scale": 27830
+  },
+  "sst_mur": {
+    "description": "高分辨率海表温度 (MUR SST) - 适合近岸、河口及海洋热浪精细分析",
+    "id": "NASA/JPL/global_high_resolution_sst", "band": "analysed_sst", "offset": -273.15, "scale": 1000
+  },
+  "chl_a": {
+    "description": "叶绿素-a (MODIS Aqua) - 指示浮游植物丰度和初级生产力",
+    "id": "NASA/OCEANDATA/MODIS-Aqua/L3SMI", "band": "chlor_a", "scale": 4638
+  },
+  "salinity": {
+    "description": "海表盐度 (HYCOM) - 适合河口冲淡水和洋流交汇区分析",
+    "id": "HYCOM/sea_temp_salinity", "band": "salinity", "scale_factor": 0.001, "offset": 20, "scale": 9277
+  },
+  "current_u": {
+    "description": "表层洋流纬向速度向东 (OSCAR)",
+    "id": "NASA/OSCAR/ROE_L4/V2_0", "band": "u", "scale": 27830
+  },
+  "current_v": {
+    "description": "表层洋流经向速度向北 (OSCAR)",
+    "id": "NASA/OSCAR/ROE_L4/V2_0", "band": "v", "scale": 27830
+  },
+  "ssh": {
+    "description": "海表面高度/异常 (HYCOM) - 指示中尺度涡旋和上升流",
+    "id": "HYCOM/sea_temp_salinity", "band": "surface_elevation", "scale_factor": 0.001, "scale": 9277
+  },
+  "bathymetry": {
+    "description": "海底高程/水深 (GEBCO) - 静态数据，无时间维度，负值表示水深",
+    "id": "NOAA/NGDC/ETOPO1", "band": "bed", "is_static": true, "scale": 1852
+  }
+}

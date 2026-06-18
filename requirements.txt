@@ -1,0 +1,18 @@
+numpy>=1.26
+pandas>=2.2
+scikit-learn>=1.5
+matplotlib>=3.9
+seaborn>=0.13
+pyyaml>=6.0
+python-dotenv>=1.0
+joblib>=1.4
+
+# Existing stack dependencies
+langchain>=0.3
+langgraph>=0.2
+earthengine-api>=0.1.4
+fastapi>=0.115
+uvicorn>=0.30
+langserve>=0.3
+sse-starlette>=2.1
+python-multipart
