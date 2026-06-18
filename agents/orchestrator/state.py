@@ -10,6 +10,10 @@ import pandas as pd
 @dataclass
 class PlanConfig:
     species_name: str = "target_species"
+    # --- data mode ---
+    data_mode: str = "gbif_obis"  # "upload" | "gbif_obis" | "gee_extract"
+    full_dataset_path: str = ""   # used when data_mode == "upload"
+
     presence_points_path: str = ""
     presence_source_mode: str = "gbif_obis"
     occurrence_download_limit: int = 1200

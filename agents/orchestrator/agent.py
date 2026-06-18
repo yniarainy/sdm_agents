@@ -59,16 +59,28 @@ class SDMOrchestrator:
 
         state.log("Pipeline started")
         fatal_error: Optional[Exception] = None
-        steps: List[Tuple[str, Callable[[PipelineState], None]]] = [
-            ("prepare_points", self._prepare_points),
-            ("precheck_factors", self._precheck_factors),
-            ("build_dataset", self._build_dataset),
-            ("split_data", self._split_data),
-            ("train_models", self._train_models),
-            ("evaluate", self._evaluate),
-            ("predict_map", self._predict_map),
-            ("build_report", self._build_report),
-        ]
+
+        # Build step list based on data mode
+        if plan.data_mode == "upload":
+            steps: List[Tuple[str, Callable[[PipelineState], None]]] = [
+                ("load_dataset", self._load_full_dataset),
+                ("split_data", self._split_data),
+                ("train_models", self._train_models),
+                ("evaluate", self._evaluate),
+                ("predict_map", self._predict_map),
+                ("build_report", self._build_report),
+            ]
+        else:
+            steps = [
+                ("prepare_points", self._prepare_points),
+                ("precheck_factors", self._precheck_factors),
+                ("build_dataset", self._build_dataset),
+                ("split_data", self._split_data),
+                ("train_models", self._train_models),
+                ("evaluate", self._evaluate),
+                ("predict_map", self._predict_map),
+                ("build_report", self._build_report),
+            ]
 
         for step_name, fn in steps:
             try:
@@ -126,10 +138,26 @@ class SDMOrchestrator:
         plan = state.plan
         if step_name == "prepare_points" and plan.presence_points_path:
             plan.presence_points_path = ""
-            state.log("Auto-fix: invalid presence file path, switched to demo points.")
+            state.log("Auto-fix: invalid presence file path, switched to GBIF/OBIS download.")
+            return
+
+        if step_name == "load_dataset":
+            if plan.full_dataset_path:
+                plan.full_dataset_path = ""
+                state.log("Auto-fix: cleared invalid full_dataset_path. 请手动提供有效路径或切换 data_mode。")
+                return
+            # Fallback: switch to gbif_obis mode
+            plan.data_mode = "gbif_obis"
+            state.log("Auto-fix: data_mode 已从 'upload' 切换为 'gbif_obis'，将自动下载存在点。")
             return
 
         if step_name == "build_dataset":
+            # If in gee_extract mode, try switching to gbif_obis (allows fallback)
+            if str(plan.data_mode).strip().lower() == "gee_extract":
+                plan.data_mode = "gbif_obis"
+                state.log("Auto-fix: data_mode 从 'gee_extract' 切换为 'gbif_obis'（允许合成特征回退）。")
+                return
+
             registry = self._load_gee_registry()
             valid_factors = [f for f in plan.factors if f in registry]
             if valid_factors and valid_factors != plan.factors:
@@ -207,6 +235,14 @@ class SDMOrchestrator:
         if self.interactive:
             plan = self._ask_plan_questions(plan, registry)
 
+        # Upload mode: user brings their own env data — skip factor validation against GEE registry
+        if plan.data_mode == "upload":
+            for key, value in self.plan_overrides.items():
+                if hasattr(plan, key):
+                    setattr(plan, key, value)
+            plan.factors = list(dict.fromkeys(plan.factors))
+            return plan
+
         # Non-interactive mode still validates user factors and records missing ones.
         requested = plan.factors[:] if plan.factors else []
         valid, missing = self._validate_factors(requested, registry)
@@ -237,11 +273,37 @@ class SDMOrchestrator:
 
         if "bbox" in data:
             data["bbox"] = tuple(data["bbox"])
+
+        # Normalize data_mode
+        data.setdefault("data_mode", "gbif_obis")
+        data.setdefault("full_dataset_path", "")
         return data
 
     def _ask_plan_questions(self, plan: PlanConfig, registry: Dict[str, Dict[str, Any]]) -> PlanConfig:
         print("\n=== SDM Planner Agent: 请输入或回车采用默认值 ===")
         plan.species_name = self._ask_str("物种名", plan.species_name)
+        plan.data_mode = self._ask_str(
+            "数据来源模式 (upload 自带完整数据 / gbif_obis 下载存在点+GEE提取 / gee_extract 上传存在点+GEE提取)",
+            plan.data_mode,
+        )
+
+        if plan.data_mode == "upload":
+            plan.full_dataset_path = self._ask_str("完整数据集路径 (CSV, 含 lon/lat/is_presence + 环境因子)", plan.full_dataset_path)
+            plan.output_dir = self._ask_str("输出目录", plan.output_dir)
+            plan.algorithms = [x.strip().lower() for x in self._ask_str("算法(逗号分隔: rf,logreg)", ",".join(plan.algorithms)).split(",") if x.strip()]
+            plan.pseudo_absence_ratio = float(self._ask_str("伪缺失比例(相对 presence)", str(plan.pseudo_absence_ratio)))
+            plan.test_size = float(self._ask_str("测试集比例", str(plan.test_size)))
+            plan.split_mode = self._ask_str(
+                "切分策略(random_holdout/random_kfold/spatial_kfold/spatial_block_kfold)",
+                plan.split_mode,
+            )
+            plan.n_splits = int(self._ask_str("交叉验证折数(n_splits)", str(plan.n_splits)))
+            plan.spatial_clusters = int(self._ask_str("空间切分聚类数(spatial_clusters)", str(plan.spatial_clusters)))
+            plan.map_resolution = int(self._ask_str("预测图网格分辨率(建议80-180)", str(plan.map_resolution)))
+            plan.random_seed = int(self._ask_str("随机种子", str(plan.random_seed)))
+            plan.max_retries = int(self._ask_str("单步骤最大自动重试次数", str(plan.max_retries)))
+            return plan
+
         plan.presence_source_mode = self._ask_str(
             "存在点来源(upload/gbif/obis/gbif_obis)",
             plan.presence_source_mode,
@@ -398,6 +460,69 @@ class SDMOrchestrator:
         points.to_csv(state.run_dir / "points_with_labels.csv", index=False)
         state.artifacts["points"] = str(state.run_dir / "points_with_labels.csv")
 
+    def _load_full_dataset(self, state: PipelineState) -> None:
+        """Load a user-provided CSV that already contains is_presence + all environmental factors."""
+        plan = state.plan
+        path = plan.full_dataset_path
+        if not path:
+            raise ValueError("data_mode='upload' 但未指定 full_dataset_path，请在 config.yaml 或交互模式中提供")
+
+        file_path = Path(path)
+        if not file_path.exists():
+            raise FileNotFoundError(f"找不到数据集文件: {path}")
+
+        suffix = file_path.suffix.lower()
+        sep = "\t" if suffix == ".tsv" else ","
+        df = pd.read_csv(file_path, sep=sep)
+
+        required = {"lon", "lat", "is_presence"}
+        missing = required - set(df.columns)
+        if missing:
+            raise ValueError(f"上传的数据集缺少必要列: {missing}\n需要包含: lon, lat, is_presence, 以及所有环境因子列")
+
+        # Detect which factors are present as columns
+        auto_factors = [c for c in df.columns if c not in {"lon", "lat", "is_presence", "species_name", "year", "month", "date", "source", "occurrence_id"}]
+        if not auto_factors:
+            raise ValueError("数据集中未检测到环境因子列（除 lon/lat/is_presence 外的数值列）")
+
+        if not plan.factors:
+            plan.factors = auto_factors
+            state.log(f"自动检测环境因子: {', '.join(auto_factors)}")
+        else:
+            missing_factors = [f for f in plan.factors if f not in df.columns]
+            if missing_factors:
+                raise ValueError(f"配置的环境因子在数据集中不存在: {missing_factors}\n数据集可用列: {list(df.columns)}")
+
+        # Ensure is_presence is 0/1
+        df["is_presence"] = df["is_presence"].astype(int)
+
+        # Fill in missing metadata columns
+        if "year" not in df.columns:
+            df["year"] = pd.NA
+        if "month" not in df.columns:
+            df["month"] = pd.NA
+        if "species_name" not in df.columns:
+            df["species_name"] = plan.species_name
+
+        state.points_df = df
+        state.dataset_df = df.copy()
+        state.metrics["presence_source"] = {
+            "mode": "upload",
+            "path": path,
+            "rows": int(len(df)),
+            "presence_count": int(df["is_presence"].sum()),
+            "background_count": int((df["is_presence"] == 0).sum()),
+        }
+        state.metrics["feature_source"] = {f: "user_upload" for f in plan.factors}
+
+        # Save artifacts
+        df.to_csv(state.run_dir / "points_with_labels.csv", index=False)
+        state.artifacts["points"] = str(state.run_dir / "points_with_labels.csv")
+        df.to_csv(state.run_dir / "training_dataset.csv", index=False)
+        state.artifacts["dataset"] = str(state.run_dir / "training_dataset.csv")
+
+        state.log(f"已加载用户数据: {len(df)} 行, 存在点 {state.metrics['presence_source']['presence_count']} 个, 环境因子 {len(plan.factors)} 个")
+
     def _model_feature_columns(self, plan: PlanConfig, df: pd.DataFrame) -> List[str]:
         feature_cols = []
         for factor in plan.factors:
@@ -497,16 +622,41 @@ class SDMOrchestrator:
             raise ValueError("points_df is empty")
 
         df = state.points_df.copy()
+        data_mode = str(state.plan.data_mode or "gbif_obis").strip().lower()
 
         source_map: Dict[str, str] = {}
-        if state.plan.use_gee and self._check_gee_ready(state):
+        gee_ok = state.plan.use_gee and self._check_gee_ready(state)
+
+        if gee_ok:
             source_map.update(self._extract_gee_features(state, df))
 
-        # For any factor missing from GEE (or failed), auto-fallback to deterministic synthetic features.
+        # For any factor missing from GEE (or failed), decide based on data_mode
         for factor in state.plan.factors:
             if factor not in df.columns:
+                if data_mode == "gee_extract":
+                    # gee_extract mode: GEE must provide the data
+                    raise RuntimeError(
+                        f"环境因子 '{factor}' 无法从 GEE 提取。\n"
+                        f"请检查:\n"
+                        f"  1. GEE 认证是否正常\n"
+                        f"  2. 因子名称是否在 datasets.json 中注册\n"
+                        f"  3. 所选时间范围内是否有可用影像\n"
+                        f"或改用 data_mode='gbif_obis' 以允许回退到合成特征。"
+                    )
+                # gbif_obis mode: auto-fallback to synthetic with warning
                 df[factor] = self._feature_formula(df["lon"].to_numpy(), df["lat"].to_numpy(), factor)
                 source_map[factor] = source_map.get(factor, "synthetic_fallback")
+                state.log(f"⚠️  '{factor}' 使用合成特征（非真实遥感数据）— 模型评估可能不准确")
+
+        # In gee_extract mode, all factors must come from GEE
+        if data_mode == "gee_extract":
+            non_gee = [f for f, src in source_map.items() if src not in {"gee_live", "gee_cache"}]
+            if non_gee:
+                raise RuntimeError(
+                    f"gee_extract 模式下以下因子非 GEE 来源: {non_gee}\n"
+                    f"来源映射: {source_map}\n"
+                    f"请确保 GEE 认证正常且因子名称正确。"
+                )
 
         if state.plan.use_gee and state.plan.strict_gee:
             non_gee = [f for f, src in source_map.items() if src not in {"gee_live", "gee_cache"}]
@@ -528,28 +678,56 @@ class SDMOrchestrator:
 
         cred_path = Path.home() / ".config" / "earthengine" / "credentials"
         service_account_key = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+
         if not cred_path.exists() and not service_account_key:
-            state.log("GEE fallback: 未检测到 Earth Engine 凭据，直接使用内置特征。")
+            msg = (
+                "\n╔══════════════════════════════════════════════════════════════╗\n"
+                "║  ⚠️  Google Earth Engine 未认证                            ║\n"
+                "╠══════════════════════════════════════════════════════════════╣\n"
+                "║  请选择以下方式之一完成认证:                                 ║\n"
+                "║                                                            ║\n"
+                "║  方式1 (推荐): 命令行认证                                   ║\n"
+                "║    python -c \"import ee; ee.Authenticate(); ee.Initialize()\" ║\n"
+                "║                                                            ║\n"
+                "║  方式2: 服务账号密钥                                        ║\n"
+                "║    设置环境变量:                                            ║\n"
+                "║    GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json         ║\n"
+                "║                                                            ║\n"
+                "║  详细文档: https://developers.google.com/earth-engine/      ║\n"
+                "║            guides/auth                                     ║\n"
+                "╚══════════════════════════════════════════════════════════════╝"
+            )
+            state.log(msg)
             self._gee_ready_cache = False
             return False
 
         try:
             import ee  # type: ignore
         except Exception:
-            state.log("GEE fallback: earthengine-api 未安装，使用内置特征。")
+            state.log("GEE 未安装: pip install earthengine-api")
             self._gee_ready_cache = False
             return False
 
         try:
-            # Keep GEE auth check bounded in time to avoid blocking the whole pipeline.
             if hasattr(ee, "data") and hasattr(ee.data, "setDeadline"):
                 ee.data.setDeadline(int(state.plan.gee_auth_timeout_ms))
             ee.Initialize()
-            state.log("GEE auth check passed.")
+            state.log("✅ GEE 认证成功 — 将从遥感数据集中提取真实环境变量")
             self._gee_ready_cache = True
             return True
         except Exception as exc:
-            state.log(f"GEE fallback: 初始化失败({exc!r})，使用内置特征。")
+            state.log(
+                f"\n╔══════════════════════════════════════════════════════════════╗\n"
+                f"║  ❌ GEE 认证失败                                            ║\n"
+                f"╠══════════════════════════════════════════════════════════════╣\n"
+                f"║  错误: {str(exc)[:60]:<60}║\n"
+                f"╠══════════════════════════════════════════════════════════════╣\n"
+                f"║  排查步骤:                                                   ║\n"
+                f"║  1. 确认网络可访问 googleapis.com                            ║\n"
+                f"║  2. 重新运行: python -c \"import ee; ee.Authenticate()\"       ║\n"
+                f"║  3. 检查 GOOGLE_APPLICATION_CREDENTIALS 是否正确             ║\n"
+                f"╚══════════════════════════════════════════════════════════════╝"
+            )
             self._gee_ready_cache = False
             return False
 
@@ -1157,6 +1335,26 @@ class SDMOrchestrator:
         feature_source = state.metrics.get("feature_source", {})
         pred_source = state.metrics.get("prediction_feature_source", {})
         presence_source = state.metrics.get("presence_source", {})
+        data_mode = state.plan.data_mode or "gbif_obis"
+
+        # Determine data quality flag
+        sources_used = set(feature_source.values()) if feature_source else set()
+        if not sources_used:
+            data_quality = "unknown"
+            data_quality_label = "未知"
+        elif sources_used <= {"user_upload"}:
+            data_quality = "user"
+            data_quality_label = "✅ 用户自有数据"
+        elif sources_used <= {"gee_live", "gee_cache"}:
+            data_quality = "real"
+            data_quality_label = "✅ 真实遥感数据 (GEE)"
+        elif sources_used & {"gee_live", "gee_cache"}:
+            data_quality = "mixed"
+            data_quality_label = "⚠️ 混合来源（部分GEE + 部分合成）"
+        else:
+            data_quality = "synthetic"
+            data_quality_label = "⚠️ 合成模拟数据（非真实遥感）— 模型结果不可用于科研"
+
         step_status_html = "".join(
             f"<li><strong>{k}</strong>: {v}</li>" for k, v in state.step_status.items()
         ) or "<li>暂无</li>"
@@ -1238,7 +1436,8 @@ class SDMOrchestrator:
   <div class=\"container\">
     <div class=\"hero\">
       <h1 style=\"margin:0\">SDM 生产级评估报告</h1>
-      <p style=\"opacity:0.92\">物种: {state.plan.species_name} | 模型: {metrics.get("best_model", "NA")}</p>
+      <p style=\"opacity:0.92\">物种: {state.plan.species_name} | 模型: {metrics.get("best_model", "NA")} | 数据模式: {data_mode}</p>
+      <p style=\"opacity:0.92; margin-top:6px\">数据质量: {data_quality_label}</p>
     </div>
 
     <h2 class=\"section-title\">核心指标</h2>

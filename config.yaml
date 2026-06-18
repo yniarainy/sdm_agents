@@ -1,28 +1,48 @@
+# ============================================================
+# SDM Agents 配置文件
+# ============================================================
+
 species_name: demersal_fish
-presence_points_path: ""
-presence_source_mode: "gbif_obis"
+
+# --- 数据来源模式 ---
+# "upload"      : 用户提供完整数据集 CSV（含 lon/lat/is_presence + 所有环境因子）
+# "gbif_obis"   : 从 GBIF/OBIS 下载存在点，再提取环境数据（默认）
+# "gee_extract" : 用户提供存在点 CSV，从 GEE 提取环境因子
+data_mode: "gbif_obis"
+
+# 存在点设置（data_mode 为 gbif_obis 或 gee_extract 时生效）
+presence_points_path: ""                        # 本地 CSV 路径（留空则从数据库下载）
+presence_source_mode: "gbif_obis"               # gbif / obis / gbif_obis
 occurrence_download_limit: 1200
+
+# 完整数据集路径（data_mode 为 upload 时使用）
+# CSV 需包含: lon, lat, is_presence, <环境因子列...>
+full_dataset_path: ""
+
 output_dir: "./workspace"
 
+# 时空范围
 start_date: "2023-01-01"
 end_date: "2023-12-31"
-
 bbox:
   - 110.0
   - 20.0
   - 125.0
   - 35.0
 
+# 环境因子
 factors:
   - sst
   - chl_a
   - salinity
   - bathymetry
 
+# 建模算法
 algorithms:
   - rf
   - logreg
 
+# 建模参数
 pseudo_absence_ratio: 1.0
 test_size: 0.2
 split_mode: "random_holdout"
@@ -33,10 +53,16 @@ spatial_block_bins_lat: 4
 env_strata_bins: 4
 random_seed: 42
 map_resolution: 140
-use_gee: true
-strict_gee: false
-enable_gee_precheck: true
-gee_auth_timeout_ms: 8000
+
+# GEE 设置（data_mode 为 gbif_obis 或 gee_extract 时生效）
+# 用户需先自行完成 GEE 认证：
+#   方式1: 命令行运行 earthengine authenticate
+#   方式2: 设置环境变量 GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
+use_gee: true                    # 是否尝试从 GEE 提取环境数据
+strict_gee: false                # true = GEE 不可用时中止流水线（推荐 true）
+enable_gee_precheck: true        # 提取前检查变量可用性
+gee_auth_timeout_ms: 8000       # GEE 认证超时(ms)
+
 max_retries: 2
 auto_factor_selection: true
 required_factors: []
