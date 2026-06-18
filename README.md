@@ -59,18 +59,34 @@
 
 ---
 
-## 🔄 完整流水线（8 步）
+## 🔄 三种数据模式
 
-| 步骤 | 名称 | 功能 | 状态 |
+系统根据 `data_mode` 配置自动选择不同的流水线路径：
+
+```
+data_mode: "upload"        →  [load_dataset] → split → train → evaluate → predict → report
+                              用户提供完整CSV（含 lon/lat/is_presence + 环境因子），跳过所有数据获取步骤
+
+data_mode: "gbif_obis"     →  [prepare_points] → [precheck_factors] → [build_dataset]
+                              从 GBIF/OBIS 下载存在点 → GEE 提取环境数据（失败时回退合成特征并警告）
+
+data_mode: "gee_extract"   →  [prepare_points] → [precheck_factors] → [build_dataset]
+                              用户提供存在点 CSV → 必须从 GEE 提取环境数据（失败时报错，不偷偷用假数据）
+```
+
+### 完整步骤说明
+
+| 步骤 | 名称 | 功能 | 适用模式 |
 |:----:|------|------|:----:|
-| 1 | **prepare_points** | 从 GBIF/OBIS 下载存在点或上传文件；生成伪缺失点 | ✅ |
-| 2 | **precheck_factors** | GEE 环境变量可用性预检 | ✅ |
-| 3 | **build_dataset** | GEE 遥感数据提取（自动回退合成特征） | ✅ |
-| 4 | **split_data** | 5 种空间切分策略 | ✅ |
-| 5 | **train_models** | RF / LogisticRegression 训练+CV 选最优 | ✅ |
-| 6 | **evaluate** | ROC AUC, PR AUC, TSS, F1, 混淆矩阵 | ✅ |
-| 7 | **predict_map** | 研究区栖息地适宜度空间预测图 | ✅ |
-| 8 | **build_report** | HTML 评估报告 + JSON 元数据汇总 | ✅ |
+| 1a | **load_dataset** | 加载用户完整数据集，自动检测环境因子列 | `upload` |
+| 1b | **prepare_points** | 从 GBIF/OBIS 下载存在点或上传文件；生成伪缺失点 | `gbif_obis`, `gee_extract` |
+| 2 | **precheck_factors** | GEE 环境变量可用性预检 | `gbif_obis`, `gee_extract` |
+| 3 | **build_dataset** | GEE 遥感数据提取（`gbif_obis` 可回退，`gee_extract` 严格校验） | `gbif_obis`, `gee_extract` |
+| 4 | **split_data** | 5 种空间切分策略 | 全部 |
+| 5 | **train_models** | RF / LogisticRegression 训练+CV 选最优 | 全部 |
+| 6 | **evaluate** | ROC AUC, PR AUC, TSS, F1, 混淆矩阵 | 全部 |
+| 7 | **predict_map** | 研究区栖息地适宜度空间预测图 | 全部 |
+| 8 | **build_report** | HTML 评估报告（含数据质量标识）+ JSON 元数据 | 全部 |
 
 ---
 
@@ -83,8 +99,26 @@
 
 ### 🌐 真实数据集成
 - **GBIF/OBIS 双源下载**：自动检索、去重、合并、时空过滤
-- **Google Earth Engine**：从 8 个海洋遥感数据集中实时提取环境因子
-- **自动回退机制**：GEE 不可用时自动使用合成特征，确保流水线不中断
+- **Google Earth Engine**：从 8 个海洋遥感数据集中实时提取环境因子（需用户自行完成 GEE 认证）
+- **自带数据模式** (`data_mode: upload`)：用户提供已提取好环境因子的完整 CSV，直接进入建模阶段
+- **数据质量透明**：HTML 报告中清晰标注数据来源（GEE 真实遥感 / 用户自有 / 合成模拟），避免"静默使用假数据"
+
+### 🔐 GEE 认证（用户自行完成）
+
+系统**不会自动认证 GEE**，需要用户在自己的机器上完成：
+
+```bash
+# 方式1（推荐）：命令行交互认证
+python -c "import ee; ee.Authenticate(); ee.Initialize()"
+
+# 方式2：服务账号密钥
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/your-service-account-key.json
+```
+
+认证成功后，系统会自动检测并使用。如果未认证：
+- `data_mode: gbif_obis` → 回退到合成特征（HTML 报告会显示 ⚠️ 警告标识）
+- `data_mode: gee_extract` → **报错中止**，不会偷偷用假数据
+- `data_mode: upload` → 不受影响（不使用 GEE）
 
 ### 📊 专业建模能力
 - **5 种空间交叉验证策略**：
@@ -110,13 +144,13 @@
 
 - Python 3.10+
 - R 4.x（可选，用于 biomod2 集成）
-- Google Earth Engine 账号（可选，用于真实遥感数据）
+- Google Earth Engine 账号（可选 — 如需从遥感数据提取环境因子；若使用 `data_mode: upload` 自带数据则不需要）
 
 ### 安装步骤
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/YOUR_USERNAME/sdm_agents.git
+git clone https://github.com/yniarainy/sdm_agents.git
 cd sdm_agents
 
 # 2. 创建虚拟环境
@@ -127,20 +161,23 @@ source .venv/bin/activate  # Linux/Mac
 # 3. 安装依赖
 pip install -r requirements.txt
 
-# 4. 配置 API Key
-cp .env.example .env
-# 编辑 .env 文件，填入你的 DEEPSEEK_API_KEY
+# 4. 配置 DeepSeek API Key
+# 创建 .env 文件，写入: DEEPSEEK_API_KEY="sk-your-key-here"
 
-# 5. (可选) 初始化 GEE
+# 5. (可选 — 仅当需要 GEE 提取环境因子时)
+# 完成 GEE 认证:
 python -c "import ee; ee.Authenticate(); ee.Initialize()"
+# 或设置环境变量: GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
 ```
 
 ### 环境变量
 
 ```bash
-DEEPSEEK_API_KEY="sk-your-key-here"          # DeepSeek API 密钥
-GOOGLE_APPLICATION_CREDENTIALS="/path/to/..."  # GEE 服务账号凭证（可选）
+DEEPSEEK_API_KEY="sk-your-key-here"           # DeepSeek API 密钥（必填）
+GOOGLE_APPLICATION_CREDENTIALS="/path/to/..."  # GEE 服务账号凭证（仅 GEE 模式需要）
 ```
+
+> 💡 **不想用 GEE？** 设置 `data_mode: upload` 并提供自己的环境数据 CSV 即可，无需 GEE 认证。
 
 ---
 
@@ -190,21 +227,40 @@ print(state.artifacts)
 编辑 `config.yaml`：
 
 ```yaml
-species_name: "demersal_fish"      # 物种名称（用于 GBIF/OBIS 检索）
-presence_source_mode: "gbif_obis"  # 存在点来源: upload/gbif/obis/gbif_obis
-occurrence_download_limit: 1200    # 下载上限
+# ============================================================
+# SDM Agents 配置文件
+# ============================================================
+
+species_name: "demersal_fish"              # 物种名称（用于 GBIF/OBIS 检索）
+
+# --- 数据来源模式（核心选择）---
+# "upload"      : 用户提供完整数据集 CSV（含 lon/lat/is_presence + 环境因子）
+# "gbif_obis"   : 从 GBIF/OBIS 下载存在点 + GEE 提取环境数据（可回退合成特征）
+# "gee_extract" : 用户提供存在点 CSV + 必须从 GEE 提取环境数据（失败即报错）
+data_mode: "gbif_obis"
+
+# 存在点设置（data_mode 为 gbif_obis 或 gee_extract 时生效）
+presence_points_path: ""                    # 本地 CSV 路径（留空则自动从数据库下载）
+presence_source_mode: "gbif_obis"           # gbif / obis / gbif_obis
+occurrence_download_limit: 1200             # 下载上限
+
+# 完整数据集路径（data_mode 为 upload 时使用）
+# CSV 需包含: lon, lat, is_presence, <环境因子列...>
+full_dataset_path: ""
+
+output_dir: "./workspace"
 
 # 时空范围
 start_date: "2023-01-01"
 end_date: "2023-12-31"
-bbox: [110.0, 20.0, 125.0, 35.0]  # [min_lon, min_lat, max_lon, max_lat]
+bbox: [110.0, 20.0, 125.0, 35.0]          # [min_lon, min_lat, max_lon, max_lat]
 
-# 环境因子
+# 环境因子（data_mode=upload 时留空可自动检测 CSV 中的所有因子）
 factors:
-  - sst           # 海表温度
-  - chl_a         # 叶绿素-a
-  - salinity      # 盐度
-  - bathymetry    # 水深
+  - sst           # 海表温度 (NOAA OISST)
+  - chl_a         # 叶绿素-a (MODIS Aqua)
+  - salinity      # 盐度 (HYCOM)
+  - bathymetry    # 水深 (GEBCO, 静态)
 
 # 算法
 algorithms:
@@ -212,17 +268,33 @@ algorithms:
   - logreg        # 逻辑回归
 
 # 建模参数
-pseudo_absence_ratio: 1.0           # 伪缺失比例
-test_size: 0.2                      # 测试集比例
-split_mode: "random_holdout"        # 切分策略
-n_splits: 5                         # 交叉验证折数
-map_resolution: 140                 # 预测图分辨率
+pseudo_absence_ratio: 1.0                 # 伪缺失比例
+test_size: 0.2                            # 测试集比例
+split_mode: "random_holdout"              # 切分策略: random_holdout / random_kfold / spatial_kfold / spatial_block_kfold / env_spatial_block_kfold
+n_splits: 5                               # 交叉验证折数
+spatial_clusters: 10                      # 空间聚类数
+map_resolution: 140                       # 预测图分辨率
+random_seed: 42
 
-# GEE 设置
-use_gee: true                       # 是否使用 GEE 真实数据
-strict_gee: false                   # 严格模式（无 GEE 即失败）
-enable_gee_precheck: true           # 变量可用性预检
+# GEE 设置（仅 data_mode 为 gbif_obis 或 gee_extract 时生效）
+# ⚠️ 用户需先自行完成 GEE 认证：python -c "import ee; ee.Authenticate(); ee.Initialize()"
+use_gee: true                             # 是否尝试从 GEE 提取
+strict_gee: false                         # true = 无 GEE 即中止
+enable_gee_precheck: true                 # 提取前预检变量可用性
+gee_auth_timeout_ms: 8000                 # 认证超时(ms)
+
+max_retries: 2                            # 步骤自动重试次数
+auto_factor_selection: true               # 根据物种生态类型自动推荐因子
+required_factors: []                      # 必需变量（缺失则报错）
 ```
+
+### 三种数据模式的典型用法
+
+| 场景 | data_mode | 需要准备 |
+|------|-----------|---------|
+| 🔬 **我有完整数据**，直接建模 | `upload` | CSV 含 `lon, lat, is_presence, sst, chl_a, ...` |
+| 🌐 **从零开始**，自动下载+提取 | `gbif_obis` | DeepSeek Key + GEE 认证（推荐） |
+| 📡 **我有存在点**，想用 GEE 提取 | `gee_extract` | CSV 含 `species_name, lon, lat, year` + GEE 认证 |
 
 ---
 
@@ -297,24 +369,39 @@ sdm_agents/
 
 ## 📊 运行产物展示
 
-每次运行会生成完整的评估报告：
+每次运行会在 `workspace/<species>_<timestamp>/` 下生成：
 
-<!-- 以下为最近一次 demersal_fish 运行的实际指标 -->
-| 指标 | 数值 |
+| 产物 | 说明 |
 |------|------|
-| ROC AUC | 0.534 |
-| PR AUC | 0.514 |
-| TSS | 0.023 |
-| F1 | 0.469 |
-| 算法 | Random Forest (rf) |
+| `points_with_labels.csv` | 带 is_presence 标签的点数据 |
+| `training_dataset.csv` | 完整训练数据集（含所有环境因子） |
+| `train_split.csv` / `test_split.csv` | 训练/测试集划分 |
+| `best_model.joblib` | 训练好的最优模型 |
+| `roc_curve.png` | ROC 曲线图 |
+| `confusion_matrix.png` | 混淆矩阵 |
+| `prediction_grid.csv` | 空间预测网格 |
+| `prediction_map.png` | 栖息地适宜度空间分布图 |
+| `evaluation_report.html` | **HTML 评估报告（含数据质量标识）** |
+| `run_summary.json` | 完整运行元数据 |
+| `errors.json` | 错误与自动纠错日志 |
 
-> ⚠️ **注意**：上述指标基于合成特征（GEE 认证未通过时的数学模拟数据），不代表真实生态模型性能。在真实 GEE 遥感数据下，预期 AUC 可达到 0.70-0.90。
+### 数据质量透明
+
+HTML 报告顶部会清晰标注数据来源，避免"静默使用假数据"：
+
+| 标识 | 含义 |
+|------|------|
+| ✅ 真实遥感数据 (GEE) | 所有因子均从 GEE 实时提取 |
+| ✅ 用户自有数据 | 使用用户上传的完整数据集 |
+| ⚠️ 混合来源 | 部分 GEE + 部分合成特征 |
+| ⚠️ 合成模拟数据 | 使用了数学公式模拟 — **不可用于科研** |
 
 ---
 
 ## 🔮 开发路线图
 
 ### 短期（1-2 周）
+- [x] GEE 认证 UX 改进 — 清晰错误提示 + 三种数据模式
 - [ ] 修复 GEE 认证，跑通真实遥感数据流水线
 - [ ] 将 LangGraph 子 Agent 串联为真正的多 Agent 图
 - [ ] 增加 XGBoost 和 MaxEnt 算法
