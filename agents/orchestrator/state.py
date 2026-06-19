@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Annotated, Any, Callable, Dict, List, Optional, Tuple
+import operator
 
 import pandas as pd
+from langchain_core.messages import BaseMessage
 
 
 @dataclass
@@ -75,3 +77,47 @@ class PipelineState:
         self.log_messages.append(message)
         if self.progress_callback:
             self.progress_callback(message)
+
+
+# ── LangGraph-compatible unified state for multi-agent orchestration ──
+
+@dataclass
+class AgentState:
+    """Unified state shared across all LangGraph sub-agent nodes.
+
+    Wraps PipelineState fields + LangGraph message list + sub-agent data.
+    Used by SDMAgentGraph to pass data between nodes.
+    """
+    # ── Core identity ──
+    messages: Annotated[List[BaseMessage], operator.add] = field(default_factory=list)
+
+    # ── Plan ──
+    plan: Optional[PlanConfig] = None
+    run_dir: Optional[Path] = None
+
+    # ── Data ──
+    points_df: Optional[pd.DataFrame] = None
+    dataset_df: Optional[pd.DataFrame] = None
+    train_df: Optional[pd.DataFrame] = None
+    test_df: Optional[pd.DataFrame] = None
+
+    # ── Model ──
+    best_model_name: Optional[str] = None
+    best_model: Any = None
+    feature_columns: List[str] = field(default_factory=list)
+    candidate_models: Dict[str, Any] = field(default_factory=dict)
+
+    # ── Tracking ──
+    metrics: Dict[str, Any] = field(default_factory=dict)
+    artifacts: Dict[str, str] = field(default_factory=dict)
+    step_status: Dict[str, str] = field(default_factory=dict)
+    error_events: List[Dict[str, str]] = field(default_factory=list)
+    log_messages: List[str] = field(default_factory=list)
+
+    # ── Sub-agent data ──
+    extracted_features: Dict[str, List[float]] = field(default_factory=dict)
+    final_dataset: List[Dict[str, Any]] = field(default_factory=list)
+    llm_enabled: bool = False
+
+    def log(self, message: str) -> None:
+        self.log_messages.append(message)
