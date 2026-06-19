@@ -34,27 +34,24 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                   🖥️ Web UI (FastAPI + LangServe)            │
-│             自然语言交互 / 文件上传 / 实时任务流               │
+│              🖥️ Web UI (FastAPI + LangServe)                 │
+│        自然语言交互 / 文件上传 / SSE 实时任务流                │
 └───────────────────────────┬─────────────────────────────────┘
                             │
 ┌───────────────────────────▼─────────────────────────────────┐
-│              🧠 SDM Orchestrator (主调度智能体)               │
-│         规划 → 调度 → 自动纠错 → 状态追踪 → 报告生成           │
+│          🧠 SDMAgentGraph — 9-Node LangGraph Pipeline        │
+│   planning → data_acq → split → train → biomod2 → ensemble  │
+│                       → evaluate → predict → report         │
+│         条件路由 · 错误检测 · 自动纠错 · 状态双向同步          │
 └───────────────────────────┬─────────────────────────────────┘
                             │
-        ┌───────────────────┼───────────────────┐
-        │                   │                   │
-┌───────▼──────┐   ┌────────▼───────┐   ┌───────▼──────┐
-│ 🌐 GEE Data  │   │ 🎯 SDM Trainer │   │ 🗺️ Projector │
-│   Fetcher    │   │  (R/biomod2)   │   │  (R/terra)   │
-│ 遥感数据提取  │   │  模型训练/评估  │   │  空间预测制图 │
-└──────────────┘   └────────────────┘   └──────────────┘
-        │                   │                   │
-┌───────▼──────┐   ┌────────▼───────┐   ┌───────▼──────┐
-│ 📊 BG Gen    │   │ 🔬 Evaluator   │   │              │
-│ 背景点生成    │   │ 模型评估诊断    │   │              │
-└──────────────┘   └────────────────┘   └──────────────┘
+    ┌───────────┬───────────┼───────────┬───────────┐
+    │           │           │           │           │
+┌───▼───┐ ┌────▼────┐ ┌───▼────┐ ┌───▼────┐ ┌───▼────┐
+│🌐 GEE │ │📊 BG   │ │🎯 biomod2│ │📈 SHAP │ │🗺️ Map │
+│Fetcher│ │Gen     │ │R 引擎  │ │可解释性│ │Project │
+│遥感提取│ │背景点  │ │6算法    │ │重要性  │ │Ensemble│
+└───────┘ └────────┘ └────────┘ └────────┘ └────────┘
 ```
 
 ---
@@ -64,29 +61,32 @@
 系统根据 `data_mode` 配置自动选择不同的流水线路径：
 
 ```
-data_mode: "upload"        →  [load_dataset] → split → train → evaluate → predict → report
-                              用户提供完整CSV（含 lon/lat/is_presence + 环境因子），跳过所有数据获取步骤
+data_mode: "upload"        →  [load_dataset] → split → train → biomod2 → ensemble
+                              → evaluate → predict → report
+                              用户提供完整CSV（含 lon/lat/is_presence + 环境因子）
 
-data_mode: "gbif_obis"     →  [prepare_points] → [precheck_factors] → [build_dataset]
-                              从 GBIF/OBIS 下载存在点 → GEE 提取环境数据（失败时回退合成特征并警告）
+data_mode: "gbif_obis"     →  [prepare_points] → [precheck] → [build_dataset]
+                              → split → train → biomod2 → ensemble → evaluate → predict → report
+                              GBIF/OBIS 下载存在点 → GEE 提取环境数据
 
-data_mode: "gee_extract"   →  [prepare_points] → [precheck_factors] → [build_dataset]
-                              用户提供存在点 CSV → 必须从 GEE 提取环境数据（失败时报错，不偷偷用假数据）
+data_mode: "gee_extract"   →  [prepare_points] → [precheck] → [build_dataset]
+                              → split → train → biomod2 → ensemble → evaluate → predict → report
+                              用户提供存在点 CSV → 必须 GEE 提取（失败时报错）
 ```
 
 ### 完整步骤说明
 
-| 步骤 | 名称 | 功能 | 适用模式 |
-|:----:|------|------|:----:|
-| 1a | **load_dataset** | 加载用户完整数据集，自动检测环境因子列 | `upload` |
-| 1b | **prepare_points** | 从 GBIF/OBIS 下载存在点或上传文件；生成伪缺失点 | `gbif_obis`, `gee_extract` |
-| 2 | **precheck_factors** | GEE 环境变量可用性预检 | `gbif_obis`, `gee_extract` |
-| 3 | **build_dataset** | GEE 遥感数据提取（`gbif_obis` 可回退，`gee_extract` 严格校验） | `gbif_obis`, `gee_extract` |
-| 4 | **split_data** | 5 种空间切分策略 | 全部 |
-| 5 | **train_models** | RF / LogisticRegression 训练+CV 选最优 | 全部 |
-| 6 | **evaluate** | ROC AUC, PR AUC, TSS, F1, 混淆矩阵 | 全部 |
-| 7 | **predict_map** | 研究区栖息地适宜度空间预测图 | 全部 |
-| 8 | **build_report** | HTML 评估报告（含数据质量标识）+ JSON 元数据 | 全部 |
+| 步骤 | 节点 | 功能 |
+|:----:|------|------|
+| 1 | **planning** | 加载配置、构建计划、确定数据模式路由 |
+| 2 | **data_acquisition** | 获取存在点 + 生成伪缺失 + 提取环境因子（按 data_mode 分支） |
+| 3 | **split_data** | 5 种空间切分策略 + K-Fold CV 分配 |
+| 4 | **training** | RF / XGBoost / LightGBM / LogisticRegression 四算法对比，CV 选最优 |
+| 5 | **biomod2** | R 语言 biomod2 框架：6 算法建模 + TSS 筛选 + Ensemble |
+| 6 | **ensemble** | Python 端 AUC 加权集成 + 委员会一致性评估 |
+| 7 | **evaluation** | ROC / PR / TSS / F1 + **Permutation 重要性 + SHAP + PDP + 响应曲线** |
+| 8 | **prediction** | 单模型 + Ensemble 双预测图 + 委员会一致性 (Agreement) 图 |
+| 9 | **report** | HTML 报告（数据质量标识 + 全部图表） + JSON 元数据 |
 
 ---
 
@@ -127,14 +127,22 @@ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/your-service-account-key.json
   - `spatial_kfold` — 基于 K-Means 聚类的空间 K 折
   - `spatial_block_kfold` — 空间分块 K 折
   - `env_spatial_block_kfold` — 环境分层+空间分块混合策略
-- **多算法对比**：Random Forest / Logistic Regression
+- **4 种算法对比**：Random Forest / XGBoost / LightGBM / LogisticRegression，自动选最优
+- **biomod2 R 引擎**：可选接入 biomod2 框架（RF/GLM/GBM/GAM/MAXENT/ANN），TSS 筛选 + 集成
+- **AUC 加权集成**：多算法概率加权平均 + 委员会一致性 (Agreement) 评估
 - **完整评估指标**：ROC AUC, PR AUC, TSS, Sensitivity, Specificity, F1
 
+### 🔬 模型可解释性
+- **Permutation 重要性** — 每个环境因子对 AUC 的贡献（带误差棒）
+- **SHAP 特征贡献** — TreeExplainer 全局特征影响（rf/xgb/lgbm）
+- **偏依赖图 (PDP)** — Top 3 因子的边际效应
+- **环境响应曲线** — 每个因子 vs 适宜度（其他因子固定中位数）
+
 ### 🖥️ Web 操作界面
-- Chat 式自然语言交互（基于 LangServe）
-- 存在点文件上传（CSV/TSV/GeoJSON）
+- Chat 式自然语言交互（基于 LangServe + DeepSeek）
+- 存在点文件上传（CSV/TSV/GeoJSON），自动解析列映射
 - 任务后台运行 + SSE 实时日志推送
-- 模板下载、参数查询
+- 模板下载、参数查询、历史任务状态
 
 ---
 
@@ -207,7 +215,7 @@ python -m uvicorn apps.langserve_chat:app --host 0.0.0.0 --port 8000 --reload
 
 > "帮我运行底栖鱼类的 SDM 建模，用 GBIF 和 OBIS 下载南海的存在点数据"
 
-### 方式 3：Python API
+### 方式 3：Python API（单体 Orchestrator）
 
 ```python
 from agents.orchestrator import SDMOrchestrator
@@ -218,6 +226,27 @@ orchestrator = SDMOrchestrator(
 )
 state = orchestrator.run()
 print(state.artifacts)
+```
+
+### 方式 4：Python API（多 Agent LangGraph 流水线）
+
+```python
+from agents.orchestrator.agent_graph import SDMAgentGraph
+
+graph = SDMAgentGraph(
+    config_path="config.yaml",
+    interactive=False,
+    plan_overrides={
+        "data_mode": "upload",
+        "full_dataset_path": "./my_data.csv",
+        "algorithms": ["rf", "xgb", "lgbm", "logreg"],
+    },
+    enable_llm=False,  # 设为 True 启用 DeepSeek 智能决策
+)
+
+result = graph.run()  # dict with step_status, metrics, artifacts, ensemble
+print(result["metrics"]["ensemble"])  # AUC加权集成权重
+print(result["artifacts"])            # 所有输出文件路径
 ```
 
 ---
@@ -262,9 +291,11 @@ factors:
   - salinity      # 盐度 (HYCOM)
   - bathymetry    # 水深 (GEBCO, 静态)
 
-# 算法
+# 算法（自动对比选最优）
 algorithms:
   - rf            # 随机森林
+  - xgb           # XGBoost
+  - lgbm          # LightGBM
   - logreg        # 逻辑回归
 
 # 建模参数
@@ -309,8 +340,9 @@ sdm_agents/
 │
 ├── agents/                          # 智能体模块
 │   ├── orchestrator/                # 🔥 主调度器（核心）
-│   │   ├── agent.py                 # SDMOrchestrator: 8步流水线
-│   │   ├── state.py                 # PipelineState / PlanConfig 数据模型
+│   │   ├── agent.py                 # SDMOrchestrator: 单体8步流水线 + 自动纠错
+│   │   ├── agent_graph.py           # 🆕 SDMAgentGraph: 9节点LangGraph多Agent图
+│   │   ├── state.py                 # PlanConfig / PipelineState / AgentState
 │   │   └── occurrence_tools.py      # GBIF/OBIS 数据下载与清洗
 │   │
 │   ├── gee_data_fetcher/            # 🌐 遥感数据提取智能体
@@ -379,8 +411,16 @@ sdm_agents/
 | `best_model.joblib` | 训练好的最优模型 |
 | `roc_curve.png` | ROC 曲线图 |
 | `confusion_matrix.png` | 混淆矩阵 |
+| `variable_importance.png` | 🆕 Permutation 变量重要性 |
+| `shap_summary.png` | 🆕 SHAP 特征贡献图 |
+| `partial_dependence.png` | 🆕 偏依赖图 (Top 3 因子) |
+| `response_curves.png` | 🆕 环境响应曲线 |
 | `prediction_grid.csv` | 空间预测网格 |
 | `prediction_map.png` | 栖息地适宜度空间分布图 |
+| `ensemble_prediction.csv` | 🆕 Ensemble 加权预测网格 |
+| `ensemble_prediction_map.png` | 🆕 多模型集成预测图 |
+| `committee_agreement.png` | 🆕 委员会一致性图 (1-std) |
+| `biomod2_metrics.json` | 🆕 biomod2 引擎评估指标 |
 | `evaluation_report.html` | **HTML 评估报告（含数据质量标识）** |
 | `run_summary.json` | 完整运行元数据 |
 | `errors.json` | 错误与自动纠错日志 |
@@ -400,23 +440,25 @@ HTML 报告顶部会清晰标注数据来源，避免"静默使用假数据"：
 
 ## 🔮 开发路线图
 
-### 短期（1-2 周）
+### 短期（已完成 ✅）
 - [x] GEE 认证 UX 改进 — 清晰错误提示 + 三种数据模式
+- [x] 4 种算法对比 — RF + XGBoost + LightGBM + LogisticRegression
+- [x] LangGraph 多 Agent 图 — 9 节点流水线，条件路由，错误检测
+- [x] biomod2 R 引擎集成 — 6 算法 + TSS 筛选 + 集成
+- [x] 模型可解释性 — SHAP + PDP + Permutation 重要性 + 响应曲线
+- [x] Ensemble 集成 — AUC 加权 + 委员会一致性评估
 - [ ] 修复 GEE 认证，跑通真实遥感数据流水线
-- [ ] 将 LangGraph 子 Agent 串联为真正的多 Agent 图
-- [ ] 增加 XGBoost 和 MaxEnt 算法
 
 ### 中期（1-2 月）
-- [ ] 完整接入 biomod2 框架（R 语言）
-- [ ] 添加变量重要性、响应曲线、SHAP 可解释性分析
-- [ ] 支持 CMIP6 未来气候情景投影
 - [ ] 用 5 个以上真实物种做基准测试
+- [ ] 支持 CMIP6 未来气候情景投影
+- [ ] 用户研究：生态学研究者使用测试
+- [ ] 添加单元测试
 
 ### 长期（3-6 月）
 - [ ] 多时相预测（季节/年际变化）
 - [ ] 集成更多数据源（WorldClim, Bio-ORACLE, MARSPEC）
-- [ ] 模型集成（Ensemble）与不确定性量化
-- [ ] 用户研究：生态学研究者使用测试
+- [ ] 多模态 LLM 集成（图表理解、论文辅助写作）
 
 ---
 
@@ -436,13 +478,14 @@ HTML 报告顶部会清晰标注数据来源，避免"静默使用假数据"：
 | **Wallace** (R Shiny) | GUI | 图形界面引导 | 中 | MaxEnt 为主 |
 | **sdmTMB** (R) | R 包 | 脚本编程 | 低 | 地统计模型 |
 | **Google Earth Engine** | Web IDE | JavaScript/Python | 中 | 仅数据提取 |
-| **SDM Agents** (本工作) | LLM Agent 系统 | 自然语言对话 | **高** | 可扩展 |
+| **SDM Agents** (本工作) | LLM Agent 系统 | 自然语言对话 | **高** | 10+ (RF/XGB/LGBM/GLM/GAM/GBM/MAXENT/ANN...) |
 
 **核心创新点**：
-1. **首次将 LLM Agent 架构引入 SDM 领域** — 用自然语言替代脚本编程
-2. **自动纠错与自适应** — 智能体可检测配置错误并自动修复，无需人工介入
-3. **多源数据无缝集成** — GBIF + OBIS + GEE（8个遥感数据集）自动融合
-4. **端到端自动化** — 从数据获取到预测制图+报告生成，一个自然语言指令完成
+1. **首次将 LLM Agent 架构引入 SDM 领域** — 自然语言替代脚本编程
+2. **自动纠错与自适应** — 10+ 种配置错误自动检测修复
+3. **多源数据无缝集成** — GBIF + OBIS + GEE（8个海洋遥感数据集）自动融合
+4. **端到端自动化 + 可解释性** — 从数据获取到 SHAP/响应曲线/Ensemble/委员会一致性评估，一个指令完成
+5. **双引擎架构** — Python (scikit-learn/XGBoost/LightGBM) + R (biomod2)，优势互补
 
 ### 建议投稿期刊
 
@@ -517,8 +560,10 @@ HTML 报告顶部会清晰标注数据来源，避免"静默使用假数据"：
 ### 时间线建议
 
 ```
-月份 1-2:  修复 GEE，跑通真实数据，补齐算法（biomod2 集成）
-月份 3:    完成基准实验（10 物种 × 3 区域）
+月份 1-2:  ✅ 算法补齐（Python 4种 + R biomod2 6种）
+           ✅ LangGraph 多 Agent 图 + Ensemble + 可解释性
+           🔲 GEE 认证跑通真实数据
+月份 3:    基准实验（10 物种 × 3 区域）
 月份 4:    消融实验 + 用户研究
 月份 5:    撰写初稿 + 补充实验
 月份 6:    投稿 → 修改 → 再投
