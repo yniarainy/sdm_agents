@@ -21,7 +21,7 @@
 
 ---
 
-### [ ] P0-2 LangGraph 子 Agent 未串联到主流水线
+### [x] P0-2 LangGraph 子 Agent 未串联到主流水线
 
 **现象**：`agents/gee_data_fetcher/`、`bg_generator/`、`sdm_trainer/`、`sdm_evaluator/`、`sdm_projector/` 各自是独立的 LangGraph Agent，但 `SDMOrchestrator.run()` 完全没调用它们，而是把所有逻辑都内联在了 1300 行的 `agent.py` 里
 
@@ -36,7 +36,7 @@
 
 ## 🟡 P1 — 模型科学性
 
-### [ ] P1-1 算法太少
+### [x] P1-1 算法太少
 
 **当前**：只有 RandomForest + LogisticRegression（scikit-learn）
 **目标**：加入 XGBoost、GAM（pyGAM）、GBM（LightGBM）
@@ -44,7 +44,7 @@
 
 ---
 
-### [ ] P1-2 R/biomod2 未真正接入
+### [x] P1-2 R/biomod2 未真正接入
 
 **当前**：`r_bridge.py` 调的是简陋的 `randomForest` R 脚本（`run_biomod2.R`），不是真正的 biomod2 框架
 **目标**：重写 R 脚本，接入：
@@ -57,7 +57,7 @@
 
 ---
 
-### [ ] P1-3 无可解释性分析
+### [x] P1-3 无可解释性分析
 
 **当前**：只输出 ROC 曲线和混淆矩阵
 **需要加**：
@@ -70,7 +70,7 @@
 
 ---
 
-### [ ] P1-4 无模型集成 (Ensemble)
+### [x] P1-4 无模型集成 (Ensemble)
 
 **当前**：只选单个最优模型
 **目标**：多算法加权/中位数集成，输出一致性图（committee averaging）
@@ -78,7 +78,7 @@
 
 ---
 
-### [ ] P1-5 预测图同样依赖合成数据
+### [x] P1-5 预测图同样依赖合成数据
 
 **当前**：`_predict_map()` 对预测网格做 GEE 提取，GEE 失败就回退合成公式
 **根因**：同 P0-1，GEE 通了即解决
