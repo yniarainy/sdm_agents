@@ -29,7 +29,7 @@ class PlanConfig:
             "bathymetry",
         ]
     )
-    algorithms: List[str] = field(default_factory=lambda: ["rf", "logreg"])
+    algorithms: List[str] = field(default_factory=lambda: ["rf", "xgb", "lgbm", "logreg"])
     pseudo_absence_ratio: float = 1.0
     test_size: float = 0.2
     split_mode: str = "random_holdout"

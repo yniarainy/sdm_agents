@@ -40,6 +40,8 @@ factors:
 # 建模算法
 algorithms:
   - rf
+  - xgb
+  - lgbm
   - logreg
 
 # 建模参数

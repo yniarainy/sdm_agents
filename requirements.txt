@@ -7,6 +7,11 @@ pyyaml>=6.0
 python-dotenv>=1.0
 joblib>=1.4
 
+# ML algorithms
+xgboost>=2.1
+lightgbm>=4.5
+shap>=0.46
+
 # Existing stack dependencies
 langchain>=0.3
 langgraph>=0.2

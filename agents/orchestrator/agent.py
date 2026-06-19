@@ -290,7 +290,7 @@ class SDMOrchestrator:
         if plan.data_mode == "upload":
             plan.full_dataset_path = self._ask_str("完整数据集路径 (CSV, 含 lon/lat/is_presence + 环境因子)", plan.full_dataset_path)
             plan.output_dir = self._ask_str("输出目录", plan.output_dir)
-            plan.algorithms = [x.strip().lower() for x in self._ask_str("算法(逗号分隔: rf,logreg)", ",".join(plan.algorithms)).split(",") if x.strip()]
+            plan.algorithms = [x.strip().lower() for x in self._ask_str("算法(逗号分隔: rf,xgb,lgbm,logreg)", ",".join(plan.algorithms)).split(",") if x.strip()]
             plan.pseudo_absence_ratio = float(self._ask_str("伪缺失比例(相对 presence)", str(plan.pseudo_absence_ratio)))
             plan.test_size = float(self._ask_str("测试集比例", str(plan.test_size)))
             plan.split_mode = self._ask_str(
@@ -341,7 +341,7 @@ class SDMOrchestrator:
 
         req_raw = self._ask_str("必需变量(逗号分隔，可空)", ",".join(plan.required_factors))
         plan.required_factors = [x.strip() for x in req_raw.split(",") if x.strip()]
-        plan.algorithms = [x.strip().lower() for x in self._ask_str("算法(逗号分隔: rf,logreg)", ",".join(plan.algorithms)).split(",") if x.strip()]
+        plan.algorithms = [x.strip().lower() for x in self._ask_str("算法(逗号分隔: rf,xgb,lgbm,logreg)", ",".join(plan.algorithms)).split(",") if x.strip()]
 
         plan.pseudo_absence_ratio = float(self._ask_str("伪缺失比例(相对 presence)", str(plan.pseudo_absence_ratio)))
         plan.test_size = float(self._ask_str("测试集比例", str(plan.test_size)))
@@ -1034,6 +1034,46 @@ class SDMOrchestrator:
                 ]
             )
 
+        if "xgb" in state.plan.algorithms:
+            from xgboost import XGBClassifier
+            candidates["xgb"] = Pipeline(
+                [
+                    (
+                        "model",
+                        XGBClassifier(
+                            n_estimators=300,
+                            max_depth=6,
+                            learning_rate=0.05,
+                            subsample=0.8,
+                            colsample_bytree=0.8,
+                            random_state=state.plan.random_seed,
+                            eval_metric="logloss",
+                            verbosity=0,
+                        ),
+                    )
+                ]
+            )
+
+        if "lgbm" in state.plan.algorithms:
+            from lightgbm import LGBMClassifier
+            candidates["lgbm"] = Pipeline(
+                [
+                    (
+                        "model",
+                        LGBMClassifier(
+                            n_estimators=300,
+                            max_depth=-1,
+                            learning_rate=0.05,
+                            subsample=0.8,
+                            colsample_bytree=0.8,
+                            random_state=state.plan.random_seed,
+                            class_weight="balanced",
+                            verbose=-1,
+                        ),
+                    )
+                ]
+            )
+
         if "logreg" in state.plan.algorithms:
             candidates["logreg"] = Pipeline(
                 [
@@ -1263,6 +1303,154 @@ class SDMOrchestrator:
         plt.close(fig)
         state.artifacts["confusion_matrix"] = str(cm_path)
 
+        # --- Model Interpretability ---
+        self._compute_interpretability(state, x_test, y_true)
+
+    def _compute_interpretability(
+        self,
+        state: PipelineState,
+        x_test: pd.DataFrame,
+        y_true: np.ndarray,
+    ) -> None:
+        """Generate variable importance, SHAP, PDP, and response curves."""
+        feature_names = list(x_test.columns)
+        if not feature_names:
+            return
+
+        model = state.best_model
+        # Unwrap from Pipeline if needed
+        if isinstance(model, Pipeline):
+            estimator = model.named_steps.get("model", model)
+        else:
+            estimator = model
+
+        # --- 1. Permutation Importance ---
+        try:
+            from sklearn.inspection import permutation_importance
+            perm_result = permutation_importance(
+                model, x_test, y_true, n_repeats=10,
+                random_state=state.plan.random_seed, scoring="roc_auc",
+            )
+            perm_df = pd.DataFrame({
+                "factor": feature_names,
+                "importance_mean": perm_result.importances_mean,
+                "importance_std": perm_result.importances_std,
+            }).sort_values("importance_mean", ascending=True)
+
+            fig, ax = plt.subplots(figsize=(8, 5), dpi=140)
+            ax.barh(perm_df["factor"], perm_df["importance_mean"],
+                    xerr=perm_df["importance_std"], color="#0a9396", capsize=3)
+            ax.set_xlabel("ROC AUC Decrease")
+            ax.set_title("Permutation Importance", fontsize=14, fontweight="bold")
+            fig.tight_layout()
+            imp_path = state.run_dir / "variable_importance.png"
+            fig.savefig(imp_path)
+            plt.close(fig)
+            state.artifacts["variable_importance"] = str(imp_path)
+
+            # Store top factors
+            top_factors = perm_df.tail(5)["factor"].tolist()[::-1]
+            state.metrics["evaluation"]["top_factors"] = top_factors
+            state.metrics["evaluation"]["permutation_importance"] = {
+                row["factor"]: {"mean": float(row["importance_mean"]), "std": float(row["importance_std"])}
+                for _, row in perm_df.iterrows()
+            }
+        except Exception as exc:
+            state.log(f"Permutation importance skipped: {exc}")
+
+        # --- 2. SHAP Summary (tree-based models only) ---
+        try:
+            is_tree = state.best_model_name in {"rf", "xgb", "lgbm"}
+            if is_tree:
+                import shap
+                # Sample to avoid OOM on large test sets
+                n_shap = min(200, len(x_test))
+                x_sample = x_test.sample(n=n_shap, random_state=42) if len(x_test) > n_shap else x_test
+
+                explainer = shap.TreeExplainer(estimator)
+                shap_values = explainer.shap_values(x_sample)
+                # shap_values may be a list [neg, pos] for binary classification
+                if isinstance(shap_values, list):
+                    shap_values = shap_values[1]  # positive class
+
+                fig, ax = plt.subplots(figsize=(9, 6), dpi=140)
+                shap.summary_plot(shap_values, x_sample, feature_names=feature_names,
+                                  show=False, max_display=10)
+                fig.tight_layout()
+                shap_path = state.run_dir / "shap_summary.png"
+                fig.savefig(shap_path, bbox_inches="tight")
+                plt.close("all")
+                state.artifacts["shap_summary"] = str(shap_path)
+
+                # Store mean SHAP values
+                shap_means = np.abs(shap_values).mean(axis=0)
+                state.metrics["evaluation"]["shap_importance"] = {
+                    feature_names[i]: float(shap_means[i])
+                    for i in np.argsort(shap_means)[::-1][:10]
+                }
+        except Exception as exc:
+            state.log(f"SHAP analysis skipped: {exc}")
+
+        # --- 3. Partial Dependence Plots (top 3 factors) ---
+        top3 = state.metrics["evaluation"].get("top_factors", feature_names[:3])[:3]
+        try:
+            from sklearn.inspection import PartialDependenceDisplay
+            fig, ax = plt.subplots(1, len(top3), figsize=(5 * len(top3), 5), dpi=140)
+            if len(top3) == 1:
+                ax = [ax]
+            PartialDependenceDisplay.from_estimator(
+                model, x_test, top3, kind="average",
+                ax=ax, line_kw={"color": "#005f73", "lw": 2},
+            )
+            for i, factor in enumerate(top3):
+                ax[i].set_title(f"PDP: {factor}", fontsize=12, fontweight="bold")
+                ax[i].set_ylabel("Predicted Suitability")
+            fig.tight_layout()
+            pdp_path = state.run_dir / "partial_dependence.png"
+            fig.savefig(pdp_path)
+            plt.close(fig)
+            state.artifacts["partial_dependence"] = str(pdp_path)
+        except Exception as exc:
+            state.log(f"PDP plots skipped: {exc}")
+
+        # --- 4. Response Curves (probability vs each factor, others at median) ---
+        try:
+            n_factors = len(feature_names)
+            n_cols = min(3, n_factors)
+            n_rows = int(np.ceil(n_factors / n_cols))
+            fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows), dpi=140)
+            axes_flat = axes.flatten() if n_factors > 1 else [axes]
+
+            x_median = x_test.median().to_frame().T
+            for i, factor in enumerate(feature_names):
+                ax = axes_flat[i]
+                vals = np.linspace(x_test[factor].min(), x_test[factor].max(), 50)
+                x_curve = pd.concat([x_median] * len(vals), ignore_index=True)
+                x_curve[factor] = vals
+                prob_curve = model.predict_proba(x_curve)[:, 1]
+                ax.plot(vals, prob_curve, color="#005f73", lw=2)
+                ax.fill_between(vals, prob_curve, alpha=0.15, color="#005f73")
+                ax.set_xlabel(factor)
+                ax.set_ylabel("Suitability")
+                ax.set_title(f"Response: {factor}", fontsize=11, fontweight="bold")
+                # Mark actual data distribution
+                ax.scatter(x_test[factor].sample(min(100, len(x_test))),
+                          [0.02] * min(100, len(x_test)),
+                          s=3, alpha=0.3, color="#ee9b00")
+
+            # Hide unused subplots
+            for j in range(n_factors, len(axes_flat)):
+                axes_flat[j].set_visible(False)
+
+            fig.suptitle("Environmental Response Curves", fontsize=15, fontweight="bold", y=1.01)
+            fig.tight_layout()
+            resp_path = state.run_dir / "response_curves.png"
+            fig.savefig(resp_path)
+            plt.close(fig)
+            state.artifacts["response_curves"] = str(resp_path)
+        except Exception as exc:
+            state.log(f"Response curves skipped: {exc}")
+
     def _predict_map(self, state: PipelineState) -> None:
         if state.best_model is None:
             raise ValueError("缺少训练完成的模型")
@@ -1455,6 +1643,19 @@ class SDMOrchestrator:
 
     <h2 class=\"section-title\">混淆矩阵</h2>
     <div class=\"img-box\"><img src=\"confusion_matrix.png\" alt=\"Confusion Matrix\" /></div>
+
+    <h2 class=\"section-title\">变量重要性 (Permutation)</h2>
+    <div class=\"img-box\"><img src=\"variable_importance.png\" alt=\"Variable Importance\" /></div>
+
+    <h2 class=\"section-title\">环境响应曲线</h2>
+    <div class=\"img-box\"><img src=\"response_curves.png\" alt=\"Response Curves\" /></div>
+
+    <h2 class=\"section-title\">SHAP 特征贡献</h2>
+    <div class=\"img-box\"><img src=\"shap_summary.png\" alt=\"SHAP Summary\" /></div>
+
+    <h2 class=\"section-title\">偏依赖图 (PDP)</h2>
+    <div class=\"img-box\"><img src=\"partial_dependence.png\" alt=\"Partial Dependence\" /></div>
+
 
     <h2 class=\"section-title\">空间预测图</h2>
     <div class=\"img-box\"><img src=\"prediction_map.png\" alt=\"Prediction Map\" /></div>
