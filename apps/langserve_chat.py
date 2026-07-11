@@ -20,6 +20,7 @@ from langchain_core.runnables import RunnableLambda
 from langserve import add_routes
 
 from agents.orchestrator import SDMOrchestrator
+from agents.orchestrator.agent_graph import SDMAgentGraph
 from agents.orchestrator.occurrence_tools import normalize_presence_dataframe
 
 app = FastAPI(title="SDM LangServe Chat", version="1.0.0")
@@ -154,19 +155,19 @@ def _run_job(job_id: str, overrides: Dict[str, Any]) -> None:
     with JOB_LOCK:
         JOBS[job_id]["status"] = "running"
     try:
-        orchestrator = SDMOrchestrator(
+        graph = SDMAgentGraph(
             config_path="config.yaml",
             interactive=False,
             plan_overrides=overrides,
-            progress_callback=lambda msg: _append_job_log(job_id, msg),
+            enable_llm=False,
         )
-        state = orchestrator.run()
+        result = graph.run()
         with JOB_LOCK:
             JOBS[job_id]["status"] = "completed"
             JOBS[job_id]["finished_at"] = _now()
-            JOBS[job_id]["artifacts"] = state.artifacts
-            JOBS[job_id]["step_status"] = state.step_status
-            JOBS[job_id]["errors"] = state.error_events
+            JOBS[job_id]["artifacts"] = result.get("artifacts", {})
+            JOBS[job_id]["step_status"] = result.get("step_status", {})
+            JOBS[job_id]["errors"] = result.get("error_events", [])
         _append_job_log(job_id, "任务已完成")
     except Exception as exc:
         with JOB_LOCK:
