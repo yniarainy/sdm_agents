@@ -100,27 +100,21 @@
 
 ---
 
-### [ ] P2-2 无示例数据
+### [x] P2-2 无示例数据
 
-**当前**：新用户不知道 CSV 应该长什么样
-**需要**：在 `examples/` 目录放：
-- `example_full_dataset.csv`（data_mode=upload 示例）
-- `example_presence_points.csv`（data_mode=gee_extract 示例）
-- `example_config.yaml`（带注释的完整配置）
+**已完成**: `examples/` 目录含 300 行全量数据集 + 120 行存在点 + 配置模板。`data_mode=upload` 可直接跑通。
 
 ---
 
-### [ ] P2-3 CV fold assignments 重复计算
+### [x] P2-3 CV fold assignments 重复计算
 
-**现象**：`_split_data()` 已经算好了 fold assignments 并保存到 `cv_fold_assignments.csv`，但 `_compute_cv_scores()` 又重新跑了一遍 KMeans/GroupKFold
-**修复**：让 `_train_models()` 的 CV 分支直接读取 `state.artifacts["cv_assignments"]`
+**已完成**: `_compute_cv_scores()` 优先读取 `cv_fold_assignments.csv`，避免重复 KMeans/GroupKFold。
 
 ---
 
-### [ ] P2-4 workspace 无清理机制
+### [x] P2-4 workspace 无清理机制
 
-**现象**：19 次运行产物全部保留，占用空间
-**需要**：加 `--keep N` 参数保留最近 N 次运行；或 `--clean` 标志删除旧运行
+**已完成**: `main.py --keep N` 保留最近 N 次运行，`--clean` 清除全部旧产物。
 
 ---
 
@@ -316,12 +310,11 @@
 ## 执行路线
 
 ```
-Phase 1 (2周)         Phase 2 (2周)         Phase 3 (3周)         Phase 4 (4周)
+工程收尾 (本周)      Phase 1 (1-2周)      Phase 2 (2-3周)      Phase 3 (4周)
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│ I1.1 Rationale│   │ I2.1 覆盖分析│   │ I3.1 文献提取│   │ 基准实验      │
-│ I1.2 节点记录 │ → │ I2.2 采样建议│ → │ I3.2 生境特征│ → │ 专家盲审      │
-│ I1.3 反事实   │   │ I2.3 BO迭代  │   │ I3.3 时序动态│   │ 论文撰写      │
-│ I1.4 UQ       │   │              │   │              │   │               │
-│ → 可写Methods │   │ → 核心实验   │   │ → 消融实验   │   │ → 投稿 MEE    │
+│✅ P2-2 示例   │    │ I1.1 Rationale│   │ I2.1 覆盖分析│   │ 基准实验      │
+│✅ P2-3 CV去重 │ →  │ I1.2 节点记录 │ → │ I2.2 采样建议│ → │ 专家盲审      │
+│✅ P2-4 清理   │    │ I1.3 反事实   │   │ I3.1 文献提取│   │ 论文撰写      │
+│⬜ P2-1 测试   │    │ I1.4 UQ       │   │ I3.2 生境特征│   │ 投稿 MEE      │
 └──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
 ```
