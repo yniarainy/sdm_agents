@@ -1149,44 +1149,55 @@ class SDMOrchestrator:
 
         split_mode = str(state.plan.split_mode).strip().lower()
         splits = []
-        if split_mode == "random_kfold":
-            kf = StratifiedKFold(
-                n_splits=state.plan.n_splits,
-                shuffle=True,
-                random_state=state.plan.random_seed,
-            )
-            splits = list(kf.split(x_all, y_all))
-        elif split_mode == "spatial_kfold":
-            coords = df[["lon", "lat"]].to_numpy()
-            kmeans = KMeans(
-                n_clusters=state.plan.spatial_clusters,
-                random_state=state.plan.random_seed,
-                n_init=10,
-            )
-            clusters = kmeans.fit_predict(coords)
-            gkf = GroupKFold(n_splits=state.plan.n_splits)
-            splits = list(gkf.split(x_all, y_all, groups=clusters))
-        elif split_mode == "spatial_block_kfold":
-            groups, _, _ = self._spatial_block_groups(
-                df,
-                bins_lon=state.plan.spatial_block_bins_lon,
-                bins_lat=state.plan.spatial_block_bins_lat,
-            )
-            if len(np.unique(groups)) < state.plan.n_splits:
-                raise ValueError("空间分块后有效组数不足，无法进行所需折数的 GroupKFold")
-            gkf = GroupKFold(n_splits=state.plan.n_splits)
-            splits = list(gkf.split(x_all, y_all, groups=groups))
-        elif split_mode == "env_spatial_block_kfold":
-            groups, _, _, _, _ = self._env_spatial_block_groups(
-                df,
-                bins_lon=state.plan.spatial_block_bins_lon,
-                bins_lat=state.plan.spatial_block_bins_lat,
-                env_bins=state.plan.env_strata_bins,
-            )
-            if len(np.unique(groups)) < state.plan.n_splits:
-                raise ValueError("混合分层+分块后有效组数不足，无法进行所需折数的 GroupKFold")
-            gkf = GroupKFold(n_splits=state.plan.n_splits)
-            splits = list(gkf.split(x_all, y_all, groups=groups))
+
+        # Reuse fold assignments from _split_data if available (avoids recomputing KMeans/GroupKFold)
+        cv_assignments_path = state.artifacts.get("cv_assignments")
+        if cv_assignments_path and split_mode != "random_holdout":
+            try:
+                fold_df = pd.read_csv(cv_assignments_path)
+                if "cv_fold" in fold_df.columns and len(fold_df) == len(df):
+                    for fold in sorted(fold_df["cv_fold"].unique()):
+                        val_idx = fold_df.index[fold_df["cv_fold"] == fold].to_numpy()
+                        train_idx = fold_df.index[fold_df["cv_fold"] != fold].to_numpy()
+                        if len(val_idx) > 0 and len(train_idx) > 0:
+                            splits.append((train_idx, val_idx))
+            except Exception:
+                pass  # Fall back to recomputing
+
+        # Fallback: recompute splits if cv_assignments not available
+        if not splits:
+            if split_mode == "random_kfold":
+                kf = StratifiedKFold(
+                    n_splits=state.plan.n_splits, shuffle=True,
+                    random_state=state.plan.random_seed,
+                )
+                splits = list(kf.split(x_all, y_all))
+            elif split_mode == "spatial_kfold":
+                coords = df[["lon", "lat"]].to_numpy()
+                kmeans = KMeans(n_clusters=state.plan.spatial_clusters,
+                                random_state=state.plan.random_seed, n_init=10)
+                clusters = kmeans.fit_predict(coords)
+                gkf = GroupKFold(n_splits=state.plan.n_splits)
+                splits = list(gkf.split(x_all, y_all, groups=clusters))
+            elif split_mode == "spatial_block_kfold":
+                groups, _, _ = self._spatial_block_groups(
+                    df, bins_lon=state.plan.spatial_block_bins_lon,
+                    bins_lat=state.plan.spatial_block_bins_lat,
+                )
+                if len(np.unique(groups)) < state.plan.n_splits:
+                    raise ValueError("空间分块后有效组数不足")
+                gkf = GroupKFold(n_splits=state.plan.n_splits)
+                splits = list(gkf.split(x_all, y_all, groups=groups))
+            elif split_mode == "env_spatial_block_kfold":
+                groups, _, _, _, _ = self._env_spatial_block_groups(
+                    df, bins_lon=state.plan.spatial_block_bins_lon,
+                    bins_lat=state.plan.spatial_block_bins_lat,
+                    env_bins=state.plan.env_strata_bins,
+                )
+                if len(np.unique(groups)) < state.plan.n_splits:
+                    raise ValueError("混合分层+分块后有效组数不足")
+                gkf = GroupKFold(n_splits=state.plan.n_splits)
+                splits = list(gkf.split(x_all, y_all, groups=groups))
 
         out: Dict[str, Dict[str, Any]] = {}
         for name, model in candidates.items():
