@@ -1527,6 +1527,13 @@ class SDMOrchestrator:
         plt.close(fig)
         state.artifacts["prediction_map"] = str(map_path)
 
+    def _render_decision_graph(self, state: PipelineState) -> str:
+        """Render the Scientific Decision Graph as HTML."""
+        dg = state.metrics.get("_decision_graph")
+        if dg is None:
+            return "<p style='color:#64748b;'>无决策记录。可通过 SDMAgentGraph 运行以生成完整 SDG。</p>"
+        return dg.to_html()
+
     def _build_report(self, state: PipelineState) -> None:
         report_path = state.run_dir / "evaluation_report.html"
         metrics = state.metrics.get("evaluation", {})
@@ -1668,6 +1675,9 @@ class SDMOrchestrator:
     <div class=\"img-box\"><img src=\"partial_dependence.png\" alt=\"Partial Dependence\" /></div>
 
 
+        <h2 class=\"section-title\">Scientific Decision Graph</h2>
+        <div class=\"card\">{self._render_decision_graph(state)}</div>
+
     <h2 class=\"section-title\">空间预测图</h2>
     <div class=\"img-box\"><img src=\"prediction_map.png\" alt=\"Prediction Map\" /></div>
 
@@ -1706,9 +1716,28 @@ class SDMOrchestrator:
         error_path.write_text(json.dumps(error_payload, ensure_ascii=False, indent=2), encoding="utf-8")
         state.artifacts["errors"] = str(error_path)
 
+        # Filter out non-serializable objects (DecisionGraph, models, etc.)
+        serializable_metrics = {}
+        for k, v in state.metrics.items():
+            if k.startswith("_"):
+                continue  # Skip internal objects like _decision_graph
+            try:
+                json.dumps({k: v}, ensure_ascii=False)
+                serializable_metrics[k] = v
+            except (TypeError, ValueError):
+                serializable_metrics[k] = str(v)
+
+        # Serialize decision graph separately
+        dg = state.metrics.get("_decision_graph")
+        if dg is not None:
+            serializable_metrics["decision_graph"] = dg.to_list()
+            dg_path = state.run_dir / "decision_graph.json"
+            dg_path.write_text(dg.to_json(), encoding="utf-8")
+            state.artifacts["decision_graph"] = str(dg_path)
+
         meta = {
             "plan": asdict(state.plan),
-            "metrics": state.metrics,
+            "metrics": serializable_metrics,
             "artifacts": state.artifacts,
             "step_status": state.step_status,
             "error_events": state.error_events,
