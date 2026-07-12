@@ -1,353 +1,318 @@
-# 🧬 SDM Agents — 研究创新路线图
+# A Scientific Agent Framework for Verifiable, Adaptive, and Knowledge-Grounded Species Distribution Modelling
 
-> 从"自动化工具"到"可验证的科学推理智能体"的升级路线
+> **Target**: Methods in Ecology and Evolution (MEE)
+> **Positioning**: 不是"AI 工具"，而是一种**新的生态学研究方法**
 
 ---
 
 ## 核心洞察
 
-当前 SDM Agents 的优势在于**端到端自动化**，但要发表在 Methods in Ecology and Evolution 这样的顶刊，必须从"工程自动化"升级到"科学创新"。以下 5 个方向，每一个都可以作为独立创新点发表。
+### MEE 编辑问的唯一问题
+
+> *"你的 Method，解决了生态学研究者以前解决不了的问题吗？"*
+
+不是"AI 厉害了"，而是 **Ecology 变好了**。
+
+### 两种叙事，两种命运
+
+| 叙事 A: AI 工具 (✗) | 叙事 B: 科学方法 (✓) |
+|---------------------|---------------------|
+| 用 AI 自动化了 SDM | 提出了一种**可验证、自适应、知识驱动的**生态位建模新范式 |
+| Agent 替代了手动操作 | Agent **改变了**研究者与数据的交互方式 |
+| 更快、更省力 | 能回答**以前无法回答**的问题 |
+| 输出：AUC=0.85 | 输出：**为什么** AUC=0.85，**哪里**还不确定，**下一步**该去哪采样 |
 
 ---
 
-## 一、🔬 可验证的科学推理 (Verifiable Scientific Reasoning)
+## 范式转变：Scientific Agent Framework
 
-### 创新定位
-> "首次提出可验证的科学推理智能体，将 SDM 建模从黑箱自动化转变为可审计的科学决策过程"
+### 传统 SDM 工作流
 
-### 当前差距
-- Orchestrator 的 `_auto_repair()` 会自动修改参数但**不记录理由**
-- `_train_models()` 选最优模型但**不解释为什么**该算法更好
-- 用户拿到 AUC=0.85 但不知道**这个数字是否可信**
-
-### 实现方案
-
-#### 1.1 决策理由链 (Decision Rationale Chain)
 ```
-每个关键决策点生成结构化理由:
-{
-  "step": "train_models",
-  "decision": "选择 XGBoost 作为最优模型",
-  "rationale": "XGB AUC=0.87 > RF AUC=0.84 > LGBM AUC=0.82 > LogReg AUC=0.76。XGB 在处理非线性环境梯度方面表现更好，且对 Bathymetry-SST 交互项有天然支持",
-  "evidence": {"cv_mean_auc": 0.87, "cv_std": 0.03, "vs_runner_up": "+0.03"},
-  "counterfactual": "如果选 RF，AUC 会低 0.03，TSS 会从 0.62 降到 0.56，主要差异区域在近岸浅水区",
-  "timestamp": "2026-07-11T10:23:00"
-}
+Data ──→ Researcher (all decisions) ──→ Model ──→ Paper
+              ↑
+         黑箱：为什么选这个算法？为什么删这些点？
+         为什么设这个阈值？预测可信吗？
 ```
 
-**实现位置**: `agent_graph.py` — 每个节点返回 `rationale` 字段  
-**新增文件**: `agents/orchestrator/rationale.py` — RationaleChain 数据类 + 渲染器
+### Scientific Agent Framework 工作流
 
-#### 1.2 反事实推理 (Counterfactual Reasoning)
 ```
-对每个重要决策自动回答"如果选了另一种方案会怎样？":
-- 算法对比: RF vs XGBoost 的空间预测差异图
-- 因子对比: 有/无 Bathymetry 的 AUC 差异
-- 策略对比: spatial_kfold vs random_kfold 的性能差异
-```
-
-**实现位置**: `agent_graph.py` — `_ensemble_node` 扩展  
-**新增文件**: `agents/orchestrator/counterfactual.py`
-
-#### 1.3 不确定性量化 (Uncertainty Quantification)
-```
-每个预测像素输出两个维度的不确定性:
-- 数据不确定性 (Aleatoric): 该像元环境条件在训练数据中的代表性
-- 模型不确定性 (Epistemic): 各算法预测值之间的分歧 (committee std 的扩展)
-- 预测区间: 90% CI，而非单点概率
+Data ──→ Scientific Agent ──→ Researcher (审核与决策) ──→ Paper
+              │                       ↑
+              │  ① 数据质量诊断       │
+              │  ② 假设生成           │  审查决策理由
+              │  ③ 方法选择           │  验证反事实分析
+              │  ④ 模型训练           │  确认采样建议
+              │  ⑤ 不确定性分析       │
+              │  ⑥ 反事实验证         │
+              │  ⑦ 采样建议           │
+              │  ⑧ 科学解释           │
+              │                       │
+              └─── Decision Graph ────┘
+              (每一步: Decision · Evidence · Alternative · Confidence · Counterfactual)
 ```
 
-**实现位置**: `agent_graph.py` — `_predict_ensemble` 扩展  
-**当前已有基础**: `committee_agreement.png`（委员会一致性）→ 升级为完整 UQ
-
-### 实验设计
-| 实验 | 方法 | 预期结论 |
-|------|------|---------|
-| 专家盲审 | 5 位生态学家盲审 20 个决策理由，评分 1-10 | 智能体理由得分 ≥ 研究生水平 |
-| 信任度测试 | 有无理由链时，研究者对模型结果的采纳率 | 有理由链时采纳率 +40% |
-| 反事实验证 | 100 个物种的 RF vs MaxEnt 对比 | 反事实推理准确率 > 85% |
+**这不是"一个 SDM 工具"，这是生态学研究流程的范式升级。**
 
 ---
 
-## 二、🎯 主动学习 (Active Learning for SDM)
+## 三大方法学创新
 
-### 创新定位
-> "首次将 LLM 决策与空间自适应采样结合，突破传统 SDM 被动依赖已有数据的局限"
+### Innovation 1: Scientific Decision Graph (SDG)
 
-### 当前差距
-- 系统**被动接受**用户提供的数据
-- 如果数据覆盖不足，模型质量差但**用户不知道**
-- **无法指导**下一轮野外采样
+> **解决什么问题**: AI 黑箱 — 传统 SDM 每个决策都不可追溯，研究者无法判断模型是否可信
+>
+> **生态学意义**: 首次让 SDM 建模的每一个关键决策都附带**可审计的科学证据链**
 
-### 实现方案
+#### SDG 的五要素
 
-#### 2.1 环境空间覆盖率分析
+每个建模决策节点输出结构化决策记录：
+
 ```
-建模完成后自动计算:
-- 环境覆盖热力图: 哪些环境组合已有足够采样点
-- 知识缺口地图: 哪些区域/环境组合采样不足
-- 不确定性热力图: 预测不确定性最高的区域
-```
-
-**新增文件**: `agents/orchestrator/active_learning.py`
-
-#### 2.2 推荐采样点生成
-```
-智能体自动输出:
-- "建议在 (119.5°E, 34.2°N) 附近采样 5 个点，该区域 SST 偏高且叶绿素偏低，
-  当前数据在此环境组合上存在缺口，补充后可预期 AUC 提升 0.05-0.08"
-- 优先级排序: 按信息增益预期排序
+Decision Node: Model Selection
+├── Decision:   选择 XGBoost 作为最终模型
+├── Evidence:   CV AUC: XGB=0.87, RF=0.84, LGBM=0.82, LogReg=0.76
+│               XGB 在 Bathymetry-SST 非线性交互上表现最优
+├── Alternative: 如果选 RF，AUC 降 0.03，TSS 从 0.62 降至 0.56
+│               差异主要分布在近岸浅水区 (反事实空间图)
+├── Confidence:  0.85 (基于 CV 方差和算法间一致性)
+└── Counterfactual: 见 alternatives/counterfactual_rf_vs_xgb.png
 ```
 
-#### 2.3 贝叶斯优化迭代
+#### 完整的 SDG 节点链
+
 ```
-迭代循环:
+Occurrence Cleaning
+├── 为什么删除了 23 个点？
+├── 证据: 23 个点在陆地上/超出研究区/年份不匹配
+└── 如果保留: AUC 会降 0.02 (噪声引入)
+
+Feature Selection
+├── 为什么保留 SST, Chl-a, Bathymetry, Salinity？
+├── 证据: Permutation 重要性排序; 多重共线性 VIF < 5
+└── 如果去掉 Bathymetry: AUC 降 0.06 (反事实)
+
+Spatial CV Strategy
+├── 为什么选 spatial_block_kfold 而非 random_kfold？
+├── 证据: 空间自相关 Moran's I = 0.34; random CV 会高估 AUC 0.05
+└── 如果选 random: 预测图在北部海域过度乐观
+
+Pseudo-absence Generation
+├── 为什么设 1:1 比例？为什么排除水深 < 10m 区域？
+├── 证据: 文献建议底栖鱼类 PA 应排除不可栖息深度
+└── 如果全随机: 会在陆地/浅滩生成无效 PA
+
+Threshold Selection
+├── 为什么 threshold = 0.53 而非默认 0.5？
+├── 证据: 最大化 TSS; Sensitivity-Specificity 交点
+└── 如果 0.5: Sensitivity 降 0.08
+
+Prediction Uncertainty
+├── 预测可信度分布: 高置信区占 62%, 低置信区占 15%
+├── 不确定性来源: 60% 数据不足, 40% 模型分歧
+└── 建议: 3 个低置信区需要补充采样
+```
+
+#### 实验设计
+
+| 实验 | 方法 | 指标 |
+|------|------|------|
+| **专家盲审** | 5 位生态学家盲审 20 个决策节点，评分 1-10 | 科学合理性得分 |
+| **信任度测试** | 有无 SDG 时，研究者对同一模型结果的采纳意愿 | 采纳率差异 |
+| **反事实准确率** | 100 个物种，对比反事实预测 vs 实际重跑结果 | 误差 < 5% |
+| **可复现性** | 同一配置跑 10 次 vs 手动 SDM 跑 10 次 | 结果方差对比 |
+
+---
+
+### Innovation 2: Adaptive Ecological Sampling
+
+> **解决什么问题**: 传统 SDM 被动接受已有数据，无法指导**下一步该去哪采样**
+>
+> **生态学意义**: 首次将 SDM 从"描述已有分布"升级为"指导未来采样"，解决生态学最核心的 Sampling 问题
+
+#### 这不是 AI，这是 Adaptive Ecological Sampling
+
+生态学最稀缺的资源是什么？**野外采样数据。**
+
+当前所有 SDM 都在回答"物种分布在哪"，但没有一个在回答**"下一趟船该往哪开"**。
+
+#### 工作流
+
+```
 1. 用现有数据训练模型
-2. 计算获取函数 (Acquisition Function): 在不确定性最高 + 环境覆盖最稀疏处选点
-3. 输出推荐采样位置
-4. 用户补充数据后重新训练
-5. 对比前后预测图变化
+        ↓
+2. 计算三维覆盖缺口:
+   ├── 地理空间: 哪些区域没有采样点？
+   ├── 环境空间: 哪些环境组合没有观测？
+   └── 预测不确定性: 哪些区域模型最不确定？
+        ↓
+3. Agent 输出采样建议:
+   "建议在 (119.5°E, 34.2°N) 附近采集 5 个站位。
+    理由: 该区域 SST > 26°C 且 Chl-a < 0.3 mg/m³，
+    这一环境组合在当前数据中完全缺失。
+    补充后可预期 AUC 提升 0.05-0.08，
+    并降低近岸区域预测不确定性 30%。"
+        ↓
+4. 用户补充数据后重训练
+        ↓
+5. 对比前后: 预测图变化、不确定性缩减、AUC 提升
 ```
 
-### 实验设计
+#### 为什么这是一个 Method？
+
+| 传统 SDM | Adaptive Ecological Sampling |
+|----------|---------------------------|
+| 数据 → 预测 | 数据 → 预测 → **发现缺口** → **建议采样** → 新数据 → 更好的预测 |
+| 被动 | **主动** |
+| 一次性 | **迭代闭环** |
+| 回答 "在哪" | 回答 "在哪" + **"下一步去哪"** |
+
+#### 实验设计
+
 | 实验 | 方法 | 预期结论 |
 |------|------|---------|
-| 数据削减模拟 | 从完整数据集随机删除 70% 点，对比主动学习 vs 随机补点 | 主动学习用 50% 点达到全量 95% AUC |
-| 真实案例 | 与课题组合作，实际指导一轮野外采样 | 采样效率提升 2-3 倍 |
+| **数据削减模拟** | 从完整数据集随机删除 70% 点，对比: 主动学习补点 vs 随机补点 vs 均匀网格补点 | 主动学习用 50% 的点达到全量 95% AUC |
+| **采样效率** | 达到 AUC=0.85 所需的采样点数 | 主动学习减少 40-60% |
+| **真实案例** | 与合作课题组对接，实际指导一轮野外采样 | 野外验证预测准确性 |
 
 ---
 
-## 三、🔗 多模态异构数据融合 (Multimodal Data Fusion)
+### Innovation 3: Ecological Knowledge Integration
 
-### 创新定位
-> "首次构建多模态生态智能体，实现结构化数据+非结构化文本+遥感图像的跨模态知识融合"
+> **解决什么问题**: 当前 SDM 只用结构化环境因子，完全忽略了论文、遥感影像、季节动态中蕴含的生态学知识
+>
+> **生态学意义**: 首次将多源生态学知识（文献 + 遥感 + 时序）系统性地融入物种分布建模
 
-### 当前差距
-- 只处理 `datasets.json` 中的结构化环境因子
-- **完全忽略**了论文、调查报告中的文本知识
-- **完全忽略**了高分辨率遥感影像中的生境结构信息
+#### 三个知识来源，一个生态学故事
 
-### 实现方案
-
-#### 3.1 文本 → 先验约束 (Literature Knowledge Extraction)
 ```
-输入: 物种名 "Thunnus albacares"
-LLM 自动:
-1. 搜索文献摘要（通过 Semantic Scholar API）
-2. 提取关键生态学参数:
-   {
-     "preferred_sst_range": "18-28°C",
-     "depth_range": "0-250m",
-     "habitat_type": "epipelagic",
-     "spawning_temp": ">24°C",
-     "diet": "small pelagic fish"
-   }
-3. 将文本知识转化为贝叶斯先验，约束模型预测范围
-```
+Knowledge Source 1: Literature-Derived Ecological Priors
+├── 不是 "NLP" 或 "LLM"
+├── 而是: 从已发表的生态学文献中提取物种的环境偏好
+│   作为贝叶斯先验，约束模型在生态学合理的范围内预测
+├── 例: "根据 12 篇文献，黄鳍金枪鱼偏好 SST 18-28°C，
+│   产卵期要求 SST > 24°C。将此作为先验约束纳入模型。"
+└── 生态学意义: 模型预测不再纯数据驱动，而是受生态学理论约束
 
-**新增文件**: `agents/knowledge_extractor/` — 文献检索 + 命名实体识别  
-**依赖**: Semantic Scholar API / CrossRef API（均免费）
+Knowledge Source 2: Habitat Structure from Remote Sensing
+├── 不是 "Vision Transformer" 或 "计算机视觉"
+├── 而是: 从卫星影像中提取对物种有生态学意义的生境结构特征
+├── 例: "从 Landsat-8 提取的珊瑚礁覆盖率作为底栖鱼类的
+│   生境复杂度指标，使近岸区域的预测 AUC 提升 0.06"
+└── 生态学意义: 将遥感生态学参数纳入 SDM，而非仅用气候变量
 
-#### 3.2 时间序列注意力 (Temporal Attention)
-```
-当前: 对环境因子做时间平均 → 丢失季节性模式
-升级: 使用时间注意力机制
-- 输入: 12 个月的 SST 序列 (而非年均值)
-- Transformer Encoder 学习季节性模式权重
-- 例如: 该物种对 8 月 SST 更敏感（产卵期），模型自动学到这一点
+Knowledge Source 3: Temporal Ecological Niche Dynamics
+├── 不是 "Transformer" 或 "时序深度学习"
+├── 而是: 捕捉物种对环境因子的季节性响应差异
+├── 例: "该物种对 8 月 SST 的敏感性是 1 月的 3.2 倍，
+│   与其夏秋季产卵的生态习性一致"
+└── 生态学意义: 揭示生态位的时序动态，而非仅建模年均状态
 ```
 
-**实现位置**: `agents/sdm_trainer/` — 新增深度学习分支  
-**依赖**: PyTorch（可选依赖）
+#### 实验设计
 
-#### 3.3 遥感影像特征 (Vision Features from Remote Sensing)
-```
-从高分辨率 GEE 影像中提取生境结构:
-- 珊瑚礁覆盖率 (通过 spectral unmixing)
-- 海草床分布 (通过 NDVI 阈值)
-- 海岸线距离 (通过边缘检测)
-- 这些作为额外环境因子加入特征矩阵
-```
-
-**实现位置**: `agents/gee_data_fetcher/tools/gee_tools.py` — 新增 `extract_habitat_features`  
-**依赖**: GEE 已有 Landsat/Sentinel-2 数据
-
-### 实验设计
-| 实验 | 方法 | 预期结论 |
-|------|------|---------|
-| 文本先验消融 | 有/无文献先验约束的 AUC 对比 | 加入文本先验后 AUC 提升 3-8% |
-| 时序 vs 平均 | 12 月序列 vs 年均值，100 物种对比 | 季节性敏感物种提升显著 |
-| 影像特征贡献 | 有无遥感生境特征的 AUC 差异 | 近岸物种增益最大 |
+| 知识来源 | 消融实验 | 预期 |
+|---------|---------|------|
+| 文献先验 | 有/无先验约束的 AUC 对比 | AUC 提升 3-8%，环境响应曲线更符合生态学预期 |
+| 生境结构 | 有/无遥感生境特征的 AUC 对比 | 近岸物种增益最大 |
+| 时序动态 | 月均序列 vs 年均值的 AUC 对比 | 季节性敏感物种提升显著 |
 
 ---
 
-## 四、⏳ 动态环境适应 (Temporal-Aware SDM)
+## 为什么 MEE 会喜欢这个框架？
 
-### 创新定位
-> "首次实现生态位时间动态的自动检测与预警，为气候变化适应提供实时决策支持"
+### MEE 的发表标准
 
-### 当前差距
-- 只做单一时间段的静态预测
-- **不检测**生态位漂移
-- **不对接**未来气候情景
+| MEE 关心什么 | 我们怎么回答 |
+|-------------|------------|
+| **方法解决了以前解决不了的问题吗？** | 以前 SDM 不可验证、无法指导采样、知识融合困难 → 现在三个创新逐一解决 |
+| **方法改变了研究者的工作方式吗？** | 从"手动黑箱操作"到"Agent 生成 → 研究者审核 → 迭代优化" |
+| **方法有生态学意义吗？** | SDG 让建模可审计，Adaptive Sampling 解决野外采样效率，Knowledge Integration 让模型受生态学理论约束 |
+| **方法可复现吗？** | SDG 本身就是可复现性工具 — 每个决策都有记录 |
 
-### 实现方案
+### 论文故事线
 
-#### 4.1 时间窗口滑动
 ```
-自动运行多时段建模:
-- 2000-2010 模型
-- 2010-2020 模型
-- 对比: 适宜栖息地面积变化、重心位移、生态位宽度变化
-```
+1. Introduction
+   "SDM 建模面临三个根本性挑战:
+    ① 决策不透明 — 研究者无法审计建模过程
+    ② 数据被动 — 模型无法指导下一步采样
+    ③ 知识割裂 — 文献/遥感/时序知识无法融入建模
+    我们提出 Scientific Agent Framework 来解决这三个挑战。"
 
-#### 4.2 生态位漂移检测
-```
-自动报警:
-"检测到该物种适宜栖息地向北移动了 1.2 个纬度/10 年，
- 与同期 SST 升温 0.3°C/10 年吻合，建议关注。"
-```
+2. The Scientific Agent Framework
+   2.1 范式转变: 从黑箱操作到可审计的科学决策
+   2.2 Innovation 1 — Scientific Decision Graph
+   2.3 Innovation 2 — Adaptive Ecological Sampling
+   2.4 Innovation 3 — Ecological Knowledge Integration
 
-#### 4.3 CMIP6 未来投影
-```
-对接 WorldClim/Bio-ORACLE 未来气候数据:
-- ssp126 (低排放), ssp370 (中高排放), ssp585 (高排放)
-- 输出: 2050, 2070, 2090 各情景预测图
-- 自动生成"迁移走廊"建议
-```
+3. Experiments
+   3.1 SDG 验证: 专家盲审 + 反事实准确率 + 可复现性
+   3.2 采样效率: 主动学习 vs 随机 vs 均匀网格
+   3.3 知识融合消融: 文献 ± 遥感 ± 时序
 
-### 实验设计
-| 实验 | 方法 | 预期结论 |
-|------|------|---------|
-| 已知案例验证 | 选 5 个已知发生生态位漂移的入侵物种 | 系统在漂移早期即可检测到信号 |
-| CMIP6 投影 | 商业鱼种未来分布预测 + 与 IPCC 评估报告对照 | 结论方向一致 |
+4. Results
+   4.1 SDG 使建模过程从"不可审计"变为"可追溯"
+   4.2 Adaptive Sampling 用 50% 点数达到全量 95% AUC
+   4.3 生态知识融合使模型更符合生态学预期
+
+5. Discussion
+   "Scientific Agent Framework 不仅是一个工具，
+    而是一种新的生态学研究方法 —
+    它改变了研究者与数据、模型、决策的关系。"
+```
 
 ---
 
-## 五、⚔️ 科学辩论机制 (Debate-Enhanced Multi-Agent)
+## 与现有代码的映射
 
-### 创新定位
-> "引入科学辩论机制的多智能体系统，通过模拟学术同行评议过程，提升 SDM 建模的严谨性"
-
-### 当前差距
-- 多 Agent 之间是**流水线分工**，不互相质疑
-- 模型假设**未被检验**（如"环境因子独立"假设）
-
-### 实现方案
-
-#### 5.1 质疑者智能体 (Devil's Advocate Agent)
-```
-新增 Agent 角色:
-"我是方法学审核员。我会质疑你的每个关键假设:
- - 你的环境因子之间相关系数 > 0.7，是否存在多重共线性？
- - 你用了 spatial_kfold 但只设了 5 个 cluster，
-   对于南海这个尺度的研究区是不是太少了？
- - 你的伪缺失点是随机生成的，但根据文献，
-   底栖鱼类应避免在水深 < 10m 的区域设伪缺失点"
-```
-
-#### 5.2 辩论-裁决循环
-```
-每个关键决策经历:
-1. Proposer (训练 Agent) 提出方案
-2. Challenger (质疑 Agent) 提出质疑
-3. Proposer 辩护或修改方案
-4. Arbiter (仲裁 LLM) 裁决或要求补充信息
-5. 最终输出包含"辩论摘要"
-```
-
-**新增文件**: `agents/debate/` — 完整的辩论框架  
-**修改**: `agent_graph.py` — 在关键节点插入辩论循环
-
-### 实验设计
-| 实验 | 方法 | 预期结论 |
-|------|------|---------|
-| 错误率对比 | 100 物种建模，有/无辩论的异常值数量 | 辩论减少 30% 配置错误 |
-| 专家评估 | 盲审辩论记录，"这个 AI 的思考过程是否像严谨研究者" | 专家评分 > 3/5 |
+| Innovation | 核心新文件 | 修改现有文件 | 当前基础 |
+|-----------|-----------|-------------|---------|
+| **SDG** | `rationale.py`, `counterfactual.py` | `agent_graph.py` 每个节点 | `step_status`, `error_events`, `_auto_repair` |
+| **Adaptive Sampling** | `active_learning.py`, `sampling_recommender.py` | 新增 `sampling_advisor` 节点 | `committee_agreement.png`, UQ 雏形 |
+| **Knowledge Integration** | `knowledge_extractor/` (文献), `gee_tools.py` 扩展 (生境) | `sdm_trainer/` (时序) | `datasets.json`, GEE 基础设施 |
 
 ---
 
-## 🚀 应用落地路线
+## 实施路线
 
-### 场景 1: 海洋保护区规划助手
-```
-输入: "评估南海 10 个经济鱼种的保护区覆盖"
-输出:
-  - 10 物种的叠加适宜度地图
-  - "建议将 A/B/C 三区划为核心保护区，覆盖 ≥80% 物种的潜在栖息地"
-  - "D 区为生态廊道，连接南北种群"
-```
+### Phase 1: SDG 原型 (2 周) → 可开始写 Methods
+1. 实现 `RationaleNode` 数据类
+2. 为 `training`, `split`, `ensemble`, `evaluate` 节点添加决策记录
+3. HTML 报告增加"决策日志"板块
+4. 产出: 一份带完整决策链的 demo 报告
 
-### 场景 2: 入侵物种早期预警
-```
-输入: "南海新记录到 XX 物种，评估扩散风险"
-输出 (24h 内):
-  - 基于环境匹配的潜在分布图
-  - "高风险区域: 珠江口、北部湾；建议加强监测的 5 个港口"
-  - "该物种在南海的环境适宜度 > 0.7，扩散风险: 高"
-```
+### Phase 2: Adaptive Sampling 原型 (2 周) → 核心实验可跑
+1. 环境空间覆盖分析
+2. 不确定性热力图
+3. 采样建议生成
+4. 数据削减模拟实验脚本
 
-### 场景 3: 气候变化适应
-```
-输入: "SSP5-8.5 情景下，金枪鱼的 2050 年分布"
-输出:
-  - 当前 vs 2050 分布对比图
-  - "适宜栖息地向北移动约 2.3°N，面积缩减 34%"
-  - "建议将当前保护区北界北移至 38°N"
-```
+### Phase 3: Knowledge Integration (3 周) → 消融实验
+1. 文献知识提取 pipeline
+2. 遥感生境特征提取
+3. 时序生态位分析
+4. 消融实验: 有/无各类知识
 
-### 降低门槛
-- **Streamlit 无代码界面**: 上传数据 → 一键运行 → 自动生成 PDF 报告
-- **Docker 镜像**: `docker run -p 8000:8000 sdm-agents` 一行启动
-- **5 个示例数据集**: 不同生态类型的标杆案例
-- **交互式假设测试**: 滑块调整参数，实时看 AUC 变化
+### Phase 4: 全文撰写 (4 周)
+1. 基准实验: 10 物种 × 3 区域
+2. 专家盲审: SDG 决策质量评估
+3. 采样效率对比实验
+4. 论文撰写 + 修改
 
 ---
 
-## 📊 创新点与现有架构的映射
+## 最终定位
 
-| 创新方向 | TRL | 核心新文件 | 修改现有文件 | 预计工时 |
-|---------|-----|-----------|-------------|:------:|
-| **决策理由链** | 3 | `rationale.py` | `agent_graph.py` 所有节点 | 1 周 |
-| **反事实推理** | 2 | `counterfactual.py` | `_ensemble_node` | 1 周 |
-| **不确定性量化** | 4 | — | `_predict_ensemble` 扩展 | 3 天 |
-| **主动学习** | 1 | `active_learning.py` | 新增 `active_sampling` 节点 | 2 周 |
-| **文献知识提取** | 1 | `knowledge_extractor/` | 新增 `literature` 节点 | 2 周 |
-| **时间注意力** | 1 | `temporal/` | `sdm_trainer/` | 2 周 |
-| **遥感影像特征** | 2 | `gee_tools.py` 扩展 | `datasets.json` | 1 周 |
-| **时间窗口滑动** | 3 | — | `_planning` + 新增 `temporal_compare` 节点 | 1 周 |
-| **CMIP6 投影** | 2 | — | `datasets.json` 未来情景 + `_predict` 扩展 | 5 天 |
-| **质疑者 Agent** | 1 | `debate/` | `agent_graph.py` 辩论循环 | 2 周 |
-| **辩论-裁决循环** | 1 | `debate/arbiter.py` | — | 1 周 |
-| **Streamlit 界面** | 2 | `streamlit_app.py` | — | 3 天 |
-| **Docker 化** | 3 | `Dockerfile` | — | 1 天 |
-
-> **TRL** (Technology Readiness Level): 1=概念, 2=有基础可快速实现, 3=部分基础存在, 4=已有雏形
-
----
-
-## 🗓️ 发表的优先路径
-
-### 路径 A: "可解释 AI for SDM" (最快, 3 个月可投稿)
 ```
-聚焦: 决策理由链 + 反事实推理 + 不确定性量化
-期刊: Methods in Ecology and Evolution / Ecological Informatics
-实验: 10 物种基准对比 + 专家盲审 + 消融实验
-```
+以前: "我们用 AI 自动化了 SDM"
+现在: "我们提出了一种新的生态学建模方法 —
+       Scientific Agent Framework —
+       它让 SDM 从不可验证变为可审计，
+       从被动描述变为主动指导，
+       从数据驱动变为知识驱动。"
 
-### 路径 B: "多模态生态智能体" (中等, 5 个月)
+这不是一个软件。
+这是一种新的 Scientific Workflow。
 ```
-聚焦: 路径A + 文献知识提取 + 遥感影像特征 + 时间注意力
-期刊: Nature Communications / PNAS Nexus
-实验: 路径A实验 + 多模态消融 + 文本先验贡献分析
-```
-
-### 路径 C: "主动 SDM 框架" (最具突破性, 6 个月)
-```
-聚焦: 主动学习 + 贝叶斯优化 + 人与AI协作采样
-期刊: Science Advances / Nature Ecology & Evolution
-实验: 模拟实验 + 真实野外验证 + 用户研究
-```
-
-### 建议: 先做路径 A
-路径 A 的 3 个创新点中，**不确定性量化已有 committee_agreement.png 基础**，**决策理由链可复用现有的 step_status + error_events 结构**，**反事实推理复用现有的 model_selection 多算法对比**。这三个加起来约 2 周可完成 MVP，即可开始写论文。

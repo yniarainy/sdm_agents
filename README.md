@@ -1,8 +1,8 @@
-# 🌊 SDM Agents
+# 🌊 Scientific Agent Framework for SDM
 
-> **LLM-Driven Multi-Agent System for Species Distribution Modeling**
+> **A Verifiable, Adaptive, and Knowledge-Grounded Approach to Species Distribution Modelling**
 >
-> 从一条自然语言指令到完整的物种分布模型评估报告 — 全自动。
+> 不是"AI 自动化工具" — 而是一种**新的生态学研究方法**
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.2+-orange.svg)](https://langchain-ai.github.io/langgraph/)
@@ -14,9 +14,10 @@
 ## 📌 项目状态
 
 ```
-✅ 流水线完整可运行   ✅ 9节点 LangGraph Agent 图   ✅ 4+6 种算法
-✅ Ensemble + 可解释性 ✅ biomod2 R 引擎           ✅ 现代 Web 控制台
-🔲 GEE 真实数据 (需 VPN)   🔲 基准实验 (10物种×3区域)
+✅ 9节点 LangGraph 科学 Agent 图   ✅ 4+6 种算法 + Ensemble
+✅ 模型可解释性 (SHAP/PDP/响应曲线) ✅ biomod2 R 引擎
+✅ 现代 Web 控制台                  ✅ 研究路线图 (3 大方法学创新)
+🔲 GEE 真实数据 (需 VPN)            🔲 基准实验 + 专家盲审 (论文阶段)
 ```
 
 **当前生成产物 (16 个文件):**
@@ -29,11 +30,18 @@ evaluation_report.html  ·  run_summary.json  ·  best_model.joblib
 
 ---
 
-## 🎯 一句话定位
+## 🎯 这为什么是一个 Method（而不只是工具）
 
-传统 SDM 需要研究者手动操作 GBIF → 清洗数据 → 提取环境因子 → 写 R/Python 脚本 → 评估 → 制图，**耗时数天且易出错**。SDM Agents 把这个流程压缩为**一条自然语言指令**：
+传统 SDM 的三个根本性挑战：
 
-> "帮我做南海底栖鱼类的 SDM，用 RF+XGBoost+LightGBM 做集成，输出空间预测图和可解释性报告"
+| 挑战 | 传统方法 | Scientific Agent Framework |
+|------|---------|---------------------------|
+| **决策不透明** | 算法选择、参数设置、数据清洗 — 全是黑箱 | **Scientific Decision Graph** — 每个决策附带 Evidence + Alternative + Confidence + Counterfactual |
+| **数据被动** | 模型只能描述已有数据，无法指导下一步 | **Adaptive Ecological Sampling** — Agent 发现知识缺口，主动建议采样位置并解释原因 |
+| **知识割裂** | 只用结构化环境因子，文献/遥感/时序知识被浪费 | **Ecological Knowledge Integration** — 论文先验 + 生境结构 + 生态位时序动态系统性融入 |
+
+> 传统 SDM 回答 "物种分布在哪"。Scientific Agent Framework 进一步回答：
+> **"为什么是这个分布？模型可信吗？下一步该去哪采样？"**
 
 ---
 
@@ -274,24 +282,23 @@ sdm_agents/
 
 ## 🎓 发表路线图
 
-> 详见 `RESEARCH.md` — 从"自动化工具"到"可验证的科学推理智能体"的完整升级路线。
+> 详见 `RESEARCH.md` — 三大方法学创新的完整论证、实验设计与 MEE 投稿策略。
 
-**三条发表路径:**
+### 三大方法学创新
 
-| 路径 | 创新点 | 预计 | 目标期刊 |
-|------|--------|:--:|------|
-| **A** | 决策理由链 + 反事实推理 + 不确定性量化 | 3 月 | Methods in Ecology and Evolution |
-| **B** | 路径A + 文献知识提取 + 遥感影像特征 | 5 月 | Nature Communications |
-| **C** | 主动学习 + 贝叶斯优化 + 人机协作采样 | 6 月 | Science Advances |
+| # | 创新 | 解决的生态学问题 | MEE 适配度 |
+|:--:|------|-----------------|:--------:|
+| **I1** | **Scientific Decision Graph** | SDM 决策不可追溯 → 每个决策附带可审计证据链 | ⭐⭐⭐⭐⭐ |
+| **I2** | **Adaptive Ecological Sampling** | 模型被动 → 主动发现知识缺口，建议下一站去哪采样 | ⭐⭐⭐⭐⭐ |
+| **I3** | **Ecological Knowledge Integration** | 只用结构化数据 → 论文+遥感+时序知识系统性融入 | ⭐⭐⭐⭐ |
 
-**核心创新点:**
-1. **首次将 LLM Multi-Agent 架构引入 SDM** — 自然语言替代脚本编程
-2. **可验证的科学推理** — 每个决策附带证据链和反事实分析
-3. **多源数据无缝集成** — GBIF + OBIS + GEE (8 数据集) + biomod2 (6 算法)
-4. **端到端 + 可解释** — 从数据获取到 SHAP/PDP/Ensemble 全自动
-5. **双引擎架构** — Python ML + R biomod2 优势互补
+### 论文叙事
 
-**当前进度**: 基础引擎完成 (P0-P1 全部 ✅)，下一步聚焦 **P5-1 决策理由链**（路径A，最快可发表）。
+> "我们提出了 Scientific Agent Framework — 一种新的生态位建模方法。
+> 它解决了 SDM 的三个根本挑战：决策不可验证、数据被动、知识割裂。
+> 它改变了研究者与建模过程的关系 — 从黑箱操作到可审计的科学决策。"
+
+**当前进度**: 基础引擎完成 ✅，**下一步 I1.1 SDG 原型** → 可开始写 Methods 章节。
 
 ---
 
@@ -314,5 +321,5 @@ MIT License
 ---
 
 <p align="center">
-  <b>🌊 LangGraph + biomod2 + SHAP — 可解释的物种分布建模智能体</b>
+  <b>🌊 A Scientific Agent Framework — Verifiable · Adaptive · Knowledge-Grounded</b>
 </p>
